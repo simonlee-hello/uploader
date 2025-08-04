@@ -12,8 +12,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 )
 
 func (b cowTransfer) blockPut(postURL string, buf []byte, token string) (string, error) {

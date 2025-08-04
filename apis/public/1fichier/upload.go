@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Mikubill/transfer/apis"
 	"github.com/jlaffaye/ftp"
 	"io"
 	"io/ioutil"
@@ -14,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"uploader/apis"
 )
 
 const (

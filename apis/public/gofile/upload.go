@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 )
 
 const (

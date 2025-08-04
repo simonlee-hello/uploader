@@ -3,9 +3,9 @@ package filelink
 import (
 	"fmt"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
 	"github.com/spf13/cobra"
+	"uploader/apis"
+	"uploader/utils"
 )
 
 var (

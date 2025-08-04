@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Mikubill/transfer/apis"
+	"uploader/apis"
 )
 
 const upload = "https://download.gg/server/upload5555.php"

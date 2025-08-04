@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Mikubill/transfer/apis"
+	"uploader/apis"
 )
 
 const upload = "https://img.vim-cn.com/"

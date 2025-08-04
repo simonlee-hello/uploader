@@ -2,7 +2,6 @@ package crypto
 
 import (
 	"fmt"
-	"github.com/Mikubill/transfer/utils"
 	"github.com/cheggaaa/pb/v3"
 	"github.com/spf13/cobra"
 	"io"
@@ -11,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"uploader/utils"
 )
 
 var (

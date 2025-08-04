@@ -1,24 +1,16 @@
 package apis
 
 import (
-	"io"
-	"net/http"
-
-	"github.com/Mikubill/transfer/apis/methods"
 	"github.com/cheggaaa/pb/v3"
 	"github.com/spf13/cobra"
+	"io"
+	"net/http"
 )
 
 type BaseBackend interface {
 	Uploader
-	Downloader
 	SetArgs(*cobra.Command)
 	LinkMatcher(string) bool
-}
-
-type DownConfig struct {
-	methods.DownloaderConfig
-	Ticket string
 }
 
 type Uploader interface {
@@ -30,10 +22,6 @@ type Uploader interface {
 
 	StartProgress(io.Reader, int64) io.Reader
 	EndProgress()
-}
-
-type Downloader interface {
-	DoDownload(string, DownConfig) error
 }
 
 type Backend struct {
@@ -70,12 +58,6 @@ func (b Backend) DoUpload(string, int64, io.Reader) error {
 
 func (b Backend) PostUpload(string, int64) (string, error) {
 	return "", nil
-}
-
-func (b Backend) DoDownload(link string, config DownConfig) error {
-	config.Link = link
-	config.Modifier = AddHeaders
-	return DownloadFile(config)
 }
 
 func AddHeaders(req *http.Request) {

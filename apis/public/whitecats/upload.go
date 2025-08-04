@@ -13,8 +13,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 
 	"golang.org/x/text/encoding/japanese"
 	"golang.org/x/text/transform"

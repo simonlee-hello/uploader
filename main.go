@@ -1,6 +1,6 @@
 package main
 
-import "github.com/Mikubill/transfer/cmd"
+import "uploader/cmd"
 
 func main() {
 	cmd.Execute()

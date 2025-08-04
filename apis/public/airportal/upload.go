@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,6 +11,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"uploader/apis"
+	"uploader/utils"
 )
 
 const (
@@ -53,7 +53,6 @@ func (b *airPortal) PreUpload(name string, size int64) error {
 	}
 
 	req.Header.Set("content-type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("user-agent", "Mozilla/5.0 transfer")
 	req.Header.Set("referer", " https://airportal.cn/")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
 		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")

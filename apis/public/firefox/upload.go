@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 )
 
 func (b ffsend) Upload(files []string) {

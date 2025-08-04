@@ -48,7 +48,7 @@
 部分服务仅支持上传；部分服务需要使用 beta 版本。
 
 
-[登陆上传相关说明](https://github.com/Mikubill/transfer#login)
+[登陆上传相关说明](https://uploader#login)
 
 ## usage 
 
@@ -257,19 +257,4 @@ transfer decrypt -k abc your-file
 
 # specify path
 transfer encrypt -o output your-file
-```
-
-### hash 
-
-hash 功能使用 sha1, crc32, md5, sha256 对文件进行校验，可以用来检验文件一致性。
-
-```shell script 
-➜  ./transfer hash main.go
-size: 68
-path: /../transfer/main.go
-
-crc32: a51da8f5
-md5: aa091bb918ab85b1dc44cb771b1663d1
-sha1: a8e25d41330c545da8bcbeade9aebdb1b4a13ab7
-sha256: ab4dd3cdd79b5e2a88fcb3fcd45dfcffc935c913adfa888f3fb50b324638e958
 ```

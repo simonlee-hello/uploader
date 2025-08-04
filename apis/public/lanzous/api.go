@@ -2,8 +2,8 @@ package lanzous
 
 import (
 	"fmt"
-	"github.com/Mikubill/transfer/apis"
 	"github.com/spf13/cobra"
+	"uploader/apis"
 )
 
 var (

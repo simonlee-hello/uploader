@@ -7,21 +7,21 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Mikubill/transfer/apis"
-	fichier "github.com/Mikubill/transfer/apis/public/1fichier"
-	"github.com/Mikubill/transfer/apis/public/airportal"
-	"github.com/Mikubill/transfer/apis/public/catbox"
-	"github.com/Mikubill/transfer/apis/public/cowtransfer"
-	"github.com/Mikubill/transfer/apis/public/downloadgg"
-	"github.com/Mikubill/transfer/apis/public/fileio"
-	"github.com/Mikubill/transfer/apis/public/gofile"
-	"github.com/Mikubill/transfer/apis/public/infura"
-	"github.com/Mikubill/transfer/apis/public/lanzous"
-	"github.com/Mikubill/transfer/apis/public/litterbox"
-	"github.com/Mikubill/transfer/apis/public/null"
-	"github.com/Mikubill/transfer/apis/public/tmplink"
-	"github.com/Mikubill/transfer/apis/public/wenshushu"
-	//"github.com/Mikubill/transfer/apis/public/wetransfer"
+	"uploader/apis"
+	fichier "uploader/apis/public/1fichier"
+	"uploader/apis/public/airportal"
+	"uploader/apis/public/catbox"
+	"uploader/apis/public/cowtransfer"
+	"uploader/apis/public/downloadgg"
+	"uploader/apis/public/fileio"
+	"uploader/apis/public/gofile"
+	"uploader/apis/public/infura"
+	"uploader/apis/public/lanzous"
+	"uploader/apis/public/litterbox"
+	"uploader/apis/public/null"
+	"uploader/apis/public/tmplink"
+	"uploader/apis/public/wenshushu"
+	//"uploader/apis/public/wetransfer"
 )
 
 var (
@@ -43,16 +43,6 @@ var (
 	}
 )
 
-func ParseLink(link string) apis.BaseBackend {
-	for _, item := range backendList {
-		backend := item[len(item)-1].(apis.BaseBackend)
-		if backend.LinkMatcher(link) {
-			return backend
-		}
-	}
-	return nil
-}
-
 func inList(list []string, item string) bool {
 	for _, i := range list {
 		if i == item {
@@ -73,18 +63,6 @@ func runner(backend apis.BaseBackend) func(cmd *cobra.Command, args []string) {
 			apis.Upload(file, backend)
 		}
 
-		links := downloadWalker(args)
-		if len(links) > 0 {
-			for _, item := range links {
-				backend := ParseLink(item)
-				if backend != nil {
-					apis.Download(item, backend)
-				} else {
-					fmt.Println("Unsupported link:", item)
-				}
-			}
-		}
-
 		for k, item := range args {
 			isCommand := false
 			if strings.HasPrefix(item, "-") {
@@ -95,7 +73,7 @@ func runner(backend apis.BaseBackend) func(cmd *cobra.Command, args []string) {
 					isCommand = true
 				}
 			}
-			if !inList(links, item) && !inList(file, item) && !isCommand {
+			if !inList(file, item) && !isCommand {
 				fmt.Printf("transfer: %s: No such file, link or directory\n", item)
 			}
 		}

@@ -10,8 +10,8 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/Mikubill/transfer/utils"
 	"golang.org/x/crypto/hkdf"
+	"uploader/utils"
 )
 
 func genDeriveBytes(master []byte, info []byte) []byte {

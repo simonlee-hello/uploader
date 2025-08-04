@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 )
 
 func (b *chibi) DoUpload(name string, size int64, file io.Reader) error {

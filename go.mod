@@ -1,4 +1,4 @@
-module github.com/Mikubill/transfer
+module uploader
 
 go 1.18
 

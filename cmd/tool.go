@@ -2,35 +2,11 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/Mikubill/transfer/crypto"
-	"github.com/Mikubill/transfer/hash"
 	"github.com/spf13/cobra"
+	"uploader/crypto"
 )
 
 var (
-	hashCmd = &cobra.Command{
-		Use:   "hash",
-		Short: "Hash a file",
-		Long: `
-Hash a file. We will hash it on crc32, md5, sha1 and sha256.
-
-Example:
-  transfer hash your-file
-
-Note: Large file may need more time to finish.
-`,
-		Run: func(cmd *cobra.Command, args []string) {
-			files := uploadWalker(args)
-			if len(files) != 0 {
-				hash.Hash(files)
-			} else {
-				fmt.Println("Error: no file detected.")
-				fmt.Println("Use \"transfer tool hash --help\" for more information.")
-			}
-
-		},
-	}
-
 	encryptCmd = &cobra.Command{
 		Use:   "encrypt",
 		Short: "Encrypt a file",
@@ -94,7 +70,6 @@ func init() {
 	crypto.InitCmd(encryptCmd)
 	crypto.InitCmd(decryptCmd)
 
-	rootCmd.AddCommand(hashCmd)
 	rootCmd.AddCommand(encryptCmd)
 	rootCmd.AddCommand(decryptCmd)
 

@@ -3,7 +3,7 @@ package firefox
 import (
 	"fmt"
 
-	"github.com/Mikubill/transfer/utils"
+	"uploader/utils"
 )
 
 var (

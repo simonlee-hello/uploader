@@ -6,34 +6,20 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/apis/public/fileio"
+	"uploader/apis"
+	"uploader/apis/public/fileio"
 
 	"github.com/spf13/cobra"
 )
 
 var (
 	rootCmd = &cobra.Command{
-		Use:   "transfer",
-		Short: "Transfer is a very simple big file transfer tool",
-		Long: `
-Transfer is a very simple big file transfer tool.
-
-Backend Support:
-  airportal (arp), catbox (cat), cowtransfer (cow), 1fichier (fic), 
-file.io (fio), downloadgg (gg), gofile (gof), infura (inf), littlebox (lit), 
-lanzous (lzs), null (nil), tmplink (tmp), wetransfer (wet), wenshushu (wss)
-
-`,
+		Use:           "uploader",
+		Short:         "uploader is a very simple big file uploader tool",
 		SilenceErrors: true,
-		Example: `  # upload via gofile
-  ./transfer gof <your-file>
-
-  # download link
-  ./transfer https://.../`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if VersionMode {
-				fmt.Printf("\nTransfer by Mikubill.\nhttps://github.com/Mikubill/transfer\n\n")
+				fmt.Printf("uploader version: 1.0.0\n")
 				os.Exit(0)
 			} else {
 				_ = cmd.Help()
@@ -62,7 +48,7 @@ func init() {
 		backendCmd := &cobra.Command{
 			Use:     alias[0],
 			Aliases: alias[1:],
-			Short:   fmt.Sprintf("Use %s API to transfer file", alias[1]),
+			Short:   fmt.Sprintf("Use %s API to uploader file", alias[1]),
 			Run:     runner(backend),
 		}
 		backend.SetArgs(backendCmd)
@@ -98,7 +84,7 @@ func handleRootTransfer(args []string) {
 	if len(files) != 0 {
 		if !apis.MuteMode {
 			fmt.Println("Warning: backend is not set. Using default: fileio.backend - <file.io>")
-			fmt.Printf("Run 'transfer --help' for usage.\n\n")
+			fmt.Printf("Run 'uploader --help' for usage.\n\n")
 		}
 	}
 	runner(fileio.Backend)(rootCmd, args)

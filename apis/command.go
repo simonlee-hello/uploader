@@ -1,8 +1,8 @@
 package apis
 
 import (
-	"github.com/Mikubill/transfer/apis/methods"
 	"github.com/spf13/cobra"
+	"uploader/apis/methods"
 )
 
 var (
@@ -25,13 +25,5 @@ func InitCmd(cmd *cobra.Command) {
 	// workround
 	transferConfig.DebugMode = &DebugMode
 
-	cmd.Flags().StringVarP(&DownloadConfig.Prefix,
-		"output", "o", ".", "download to another file/folder")
-	cmd.Flags().BoolVarP(&DownloadConfig.ForceMode,
-		"force", "f", false, "attempt to download file regardless error")
-	cmd.Flags().IntVarP(&DownloadConfig.Parallel,
-		"parallel", "p", 3, "set download task count")
-	cmd.Flags().StringVarP(&DownloadConfig.Ticket,
-		"ticket", "t", "", "set download ticket")
 	cmd.HelpFunc()
 }

@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 
 	"github.com/cheggaaa/pb/v3"
 )

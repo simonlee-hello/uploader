@@ -2,8 +2,8 @@ package infura
 
 import (
 	"fmt"
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/utils"
 
 	"github.com/spf13/cobra"
 )

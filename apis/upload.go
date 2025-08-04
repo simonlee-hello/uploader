@@ -3,13 +3,9 @@ package apis
 import (
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
-
-	"github.com/Mikubill/transfer/crypto"
-	"github.com/Mikubill/transfer/utils"
 )
 
 func Upload(files []string, backend BaseBackend) {
@@ -17,20 +13,6 @@ func Upload(files []string, backend BaseBackend) {
 	if MuteMode {
 		transferConfig.NoBarMode = true
 		os.Stdout, _ = os.Open(os.DevNull)
-	}
-	if transferConfig.CryptoMode {
-		fmt.Println("Warning: crypto mode is enabled. \n" +
-			"Note: Crypto mode still in beta and abnormalities may occur, " +
-			"do not over-rely on this function.")
-		if transferConfig.CryptoKey == "" || len(transferConfig.CryptoKey) > 32 {
-			transferConfig.CryptoKey = utils.GenRandString(16)
-			fmt.Printf("Key is not set or incorrect: Setting it to %s\n", transferConfig.CryptoKey)
-		}
-		if len(transferConfig.CryptoKey) < 32 {
-			transferConfig.CryptoKey = string(crypto.Padding([]byte(transferConfig.CryptoKey), 32))
-			fmt.Printf("Encrypt using key: %s\n", transferConfig.CryptoKey)
-		}
-
 	}
 	var (
 		sizes []int64
@@ -45,11 +27,7 @@ func Upload(files []string, backend BaseBackend) {
 				return err
 			}
 			paths = append(paths, path)
-			if transferConfig.CryptoMode {
-				sizes = append(sizes, crypto.CalcEncryptSize(info.Size()))
-			} else {
-				sizes = append(sizes, info.Size())
-			}
+			sizes = append(sizes, info.Size())
 			return nil
 		})
 		if err != nil {
@@ -101,23 +79,12 @@ func upload(file string, size int64, backend BaseBackend) (string, error) {
 		return "", fmt.Errorf("open %s failed: %s", file, err)
 	}
 	var reader io.Reader
-	if transferConfig.CryptoMode {
-		blockSize := int64(math.Min(1048576, float64(info.Size())))
-		pipeR, pipeW := io.Pipe()
-		sig := new(sync.WaitGroup)
-		sig.Add(1)
-		go monitor(pipeW, sig)
-		go crypto.StreamEncrypt(fileStream, pipeW, transferConfig.CryptoKey, blockSize, sig)
-		reader = pipeR
-		if !transferConfig.NoBarMode {
-			reader = backend.StartProgress(pipeR, size)
-		}
-	} else {
-		reader = fileStream
-		if !transferConfig.NoBarMode {
-			reader = backend.StartProgress(fileStream, size)
-		}
+
+	reader = fileStream
+	if !transferConfig.NoBarMode {
+		reader = backend.StartProgress(fileStream, size)
 	}
+
 	err = backend.DoUpload(info.Name(), size, reader)
 	if err != nil {
 		return "", fmt.Errorf("upload error: %s", err)

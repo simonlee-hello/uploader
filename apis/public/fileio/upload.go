@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/Mikubill/transfer/apis"
 	"io"
 	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"strconv"
+	"uploader/apis"
 
 	"github.com/google/uuid"
 )

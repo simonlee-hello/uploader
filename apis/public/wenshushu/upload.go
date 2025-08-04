@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Mikubill/transfer/apis"
-	"github.com/Mikubill/transfer/crypto"
-	"github.com/Mikubill/transfer/utils"
+	"uploader/apis"
+	"uploader/crypto"
+	"uploader/utils"
 
 	"github.com/mr-tron/base58"
 )
