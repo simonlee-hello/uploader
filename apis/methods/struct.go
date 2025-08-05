@@ -1,12 +1,9 @@
 package methods
 
 import (
-	"io"
-	"net/http"
-	"os"
-	"sync"
-
 	"github.com/cheggaaa/pb/v3"
+	"io"
+	"os"
 )
 
 type MultiPartUploadConfig struct {
@@ -23,22 +20,6 @@ type TransferConfig struct {
 	NoBarMode  bool
 	CryptoMode bool
 	CryptoKey  string
-}
-
-type DownloaderConfig struct {
-	TransferConfig
-	Link        string
-	Prefix      string
-	ForceMode   bool
-	Modifier    func(r *http.Request)
-	RespHandler func(r *http.Response) bool
-}
-
-type parallelConfig struct {
-	parallel int
-	modifier func(r *http.Request)
-	counter  *writeCounter
-	wg       *sync.WaitGroup
 }
 
 type writeCounter struct {

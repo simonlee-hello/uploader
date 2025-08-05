@@ -9,6 +9,7 @@ var (
 	transferConfig methods.TransferConfig
 	DebugMode      bool
 	MuteMode       bool
+	Output         string
 )
 
 func InitCmd(cmd *cobra.Command) {
@@ -22,6 +23,7 @@ func InitCmd(cmd *cobra.Command) {
 		"silent", "", false, "enable silent mode to mute output")
 	cmd.PersistentFlags().BoolVarP(&DebugMode,
 		"verbose", "v", false, "enable verbose mode to debug")
+	cmd.PersistentFlags().StringVarP(&Output, "result", "o", "", "save download link to file")
 	// workround
 	transferConfig.DebugMode = &DebugMode
 

@@ -50,6 +50,20 @@ func Upload(files []string, backend BaseBackend) {
 		if resp != "" && MuteMode {
 			_, _ = fmt.Fprintln(tmpOut, resp)
 		}
+		if resp != "" && Output != "" {
+
+			f, err := os.OpenFile(Output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "Error opening output file %s: %v\n", Output, err)
+			} else {
+				defer f.Close()
+				if _, err := f.Write([]byte(resp + "\n")); err != nil {
+					_, _ = fmt.Fprintf(os.Stderr, "Error appending output to file %s: %v\n", Output, err)
+				} else {
+					fmt.Printf("Output appended to %s\n", Output)
+				}
+			}
+		}
 	}
 	resp, err := backend.FinishUpload(files)
 	if err != nil {
