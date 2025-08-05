@@ -2,6 +2,7 @@ package downloadgg
 
 import (
 	"fmt"
+	"uploader/utils"
 
 	"github.com/spf13/cobra"
 	"uploader/apis"
@@ -18,5 +19,6 @@ type dlg struct {
 }
 
 func (b *dlg) SetArgs(cmd *cobra.Command) {
-	cmd.Long = fmt.Sprintf("dlg - https://download.gg/\n\n")
+	cmd.Long = fmt.Sprintf("dlg - https://download.gg/\n\n" +
+		utils.Spacer("  Size Limit: 25G\n"))
 }

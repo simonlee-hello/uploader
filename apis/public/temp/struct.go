@@ -1,4 +1,4 @@
-package vimcn
+package temp
 
 import (
 	"io"

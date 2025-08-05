@@ -2,6 +2,7 @@ package catbox
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,7 +42,10 @@ func (b catBox) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	client := http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{Transport: tr}
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	fichier "uploader/apis/public/1fichier"
 
 	"uploader/apis"
-	"uploader/apis/public/fileio"
 
 	"github.com/spf13/cobra"
 )
@@ -83,9 +83,9 @@ func handleRootTransfer(args []string) {
 	files := uploadWalker(args)
 	if len(files) != 0 {
 		if !apis.MuteMode {
-			fmt.Println("Warning: backend is not set. Using default: fileio.backend - <file.io>")
+			fmt.Println("Warning: backend is not set. Default using 1fichier api")
 			fmt.Printf("Run 'uploader --help' for usage.\n\n")
 		}
+		runner(fichier.Backend)(rootCmd, args)
 	}
-	runner(fileio.Backend)(rootCmd, args)
 }

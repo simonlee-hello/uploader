@@ -2,6 +2,7 @@ package fichier
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/jlaffaye/ftp"
@@ -76,7 +77,10 @@ func (b fichier) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	client := http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{Transport: tr}
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)
@@ -226,7 +230,12 @@ func getUploadURL(domain string) (string, error) {
 		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
 
 	// 发送请求
-	resp, err := http.DefaultClient.Do(req)
+	fr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{Transport: fr}
+	//resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

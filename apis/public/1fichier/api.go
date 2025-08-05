@@ -30,6 +30,5 @@ func (b *fichier) SetArgs(cmd *cobra.Command) {
 
 	cmd.Long = fmt.Sprintf("1fichier - https://1fichier.com/\n\n" +
 		utils.Spacer("  Size Limit: 300G\n") +
-		utils.Spacer("  Upload Service: DSTORAGE s.a.s.\n") +
-		utils.Spacer("  Download Service: DSTORAGE s.a.s.\n"))
+		utils.Spacer("  Upload Service: DSTORAGE s.a.s.\n"))
 }

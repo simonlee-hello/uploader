@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"uploader/apis/public/anonfiles"
+	"uploader/apis/public/temp"
 
 	"strings"
 
@@ -9,36 +11,24 @@ import (
 
 	"uploader/apis"
 	fichier "uploader/apis/public/1fichier"
-	"uploader/apis/public/airportal"
 	"uploader/apis/public/catbox"
-	"uploader/apis/public/cowtransfer"
 	"uploader/apis/public/downloadgg"
-	"uploader/apis/public/fileio"
 	"uploader/apis/public/gofile"
-	"uploader/apis/public/infura"
-	"uploader/apis/public/lanzous"
 	"uploader/apis/public/litterbox"
 	"uploader/apis/public/null"
-	"uploader/apis/public/tmplink"
 	"uploader/apis/public/wenshushu"
-	//"uploader/apis/public/wetransfer"
 )
 
 var (
 	backendList = [][]any{
-		{"arp", "airportal", airportal.Backend},
-		{"cat", "catbox", catbox.Backend},
-		{"cow", "cowtransfer", cowtransfer.Backend},
 		{"fic", "1fichier", fichier.Backend},
-		{"fio", "file.io", fileio.Backend},
+		{"anon", "anonfiles", anonfiles.Backend},
+		{"cat", "catbox", catbox.Backend},
 		{"gg", "downloadgg", downloadgg.Backend},
 		{"gof", "gofile", gofile.Backend},
-		{"inf", "infura", infura.Backend},
 		{"lit", "littlebox", litterbox.Backend},
-		{"lzs", "lanzous", lanzous.Backend},
 		{"nil", "null", null.Backend},
-		{"tmp", "tmplink", tmplink.Backend},
-		//{"wet", "wetransfer", wetransfer.Backend},
+		{"temp", "temp", temp.Backend},
 		{"wss", "wenshushu", wenshushu.Backend},
 	}
 )

@@ -20,6 +20,5 @@ type catBox struct {
 func (b *catBox) SetArgs(cmd *cobra.Command) {
 	cmd.Long = fmt.Sprintf("CatBox - https://catbox.moe/\n\n" +
 		utils.Spacer("  Size Limit: 200M\n") +
-		utils.Spacer("  Upload Service: Psychz Networks, Los Angeles California, USA\n") +
-		utils.Spacer("  Download Service: Psychz Networks, Los Angeles California, USA\n"))
+		utils.Spacer("  Upload Service: Psychz Networks, Los Angeles California, USA\n"))
 }

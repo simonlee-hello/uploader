@@ -2,6 +2,7 @@ package null
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -39,7 +40,10 @@ func (b null) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	client := http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{Transport: tr}
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)
@@ -84,8 +88,8 @@ func (b null) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	req.ContentLength = totalSize
 	req.Header.Set("content-length", strconv.FormatInt(totalSize, 10))
 	req.Header.Set("content-type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
-		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
+	// 设置 User-Agent 会导致上传失败
+	//req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 	if config.debug {
 		log.Printf("header: %v", req.Header)
 	}

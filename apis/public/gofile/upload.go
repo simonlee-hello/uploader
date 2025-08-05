@@ -2,6 +2,7 @@ package gofile
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -110,7 +111,10 @@ func (b *goFile) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	client := http.Client{}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{Transport: tr}
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)

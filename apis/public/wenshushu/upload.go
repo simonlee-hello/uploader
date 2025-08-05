@@ -3,6 +3,7 @@ package wenshushu
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -146,7 +147,10 @@ func (b wssTransfer) uploader(ch *chan *uploadPart, config sendConfigBlock) {
 			continue
 		}
 
-		client := http.Client{Timeout: time.Duration(b.Config.interval) * time.Second}
+		tr := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		client := http.Client{Timeout: time.Duration(b.Config.interval) * time.Second, Transport: tr}
 		data := new(bytes.Buffer)
 		data.Write(item.content)
 		if apis.DebugMode {
@@ -412,7 +416,10 @@ func newRequest(link string, postBody string, config requestConfig) (*sendConfig
 
 	}
 
-	client := http.Client{Timeout: config.timeout}
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := http.Client{Timeout: config.timeout, Transport: tr}
 	req, err := http.NewRequest("POST", link, bytes.NewReader([]byte(postBody)))
 	if err != nil {
 		if config.debug {
