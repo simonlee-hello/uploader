@@ -3,7 +3,10 @@ package cmd
 import (
 	"fmt"
 	"uploader/apis/public/anonfiles"
-	"uploader/apis/public/temp"
+	"uploader/apis/public/bashupload"
+	"uploader/apis/public/cnet"
+	"uploader/apis/public/tempsh"
+	tempfiles "uploader/apis/public/tmpfiles"
 
 	"strings"
 
@@ -23,12 +26,15 @@ var (
 	backendList = [][]any{
 		{"fic", "1fichier", fichier.Backend},
 		{"anon", "anonfiles", anonfiles.Backend},
+		{"bash", "bashupload", bashupload.Backend},
 		{"cat", "catbox", catbox.Backend},
+		{"cnet", "cnet", cnet.Backend},
 		{"gg", "downloadgg", downloadgg.Backend},
 		{"gof", "gofile", gofile.Backend},
 		{"lit", "littlebox", litterbox.Backend},
 		{"nil", "null", null.Backend},
-		{"temp", "temp", temp.Backend},
+		{"temp", "temp", tempsh.Backend},
+		{"tmpf", "tempfiles", tempfiles.Backend},
 		{"wss", "wenshushu", wenshushu.Backend},
 	}
 )

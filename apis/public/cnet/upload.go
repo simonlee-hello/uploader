@@ -1,4 +1,4 @@
-package temp
+package cnet
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 
 const upload = "https://temp.sh/upload"
 
-func (b *temp) DoUpload(name string, size int64, file io.Reader) error {
+func (b *cnet) DoUpload(name string, size int64, file io.Reader) error {
 
 	body, err := methods.MultipartUpload(methods.MultiPartUploadConfig{
 		FileSize:   size,
@@ -31,7 +31,7 @@ func (b *temp) DoUpload(name string, size int64, file io.Reader) error {
 
 }
 
-func (b *temp) PostUpload(string, int64) (string, error) {
+func (b *cnet) PostUpload(string, int64) (string, error) {
 	fmt.Printf("Download Link: %s\n", b.resp)
 	return b.resp, nil
 }

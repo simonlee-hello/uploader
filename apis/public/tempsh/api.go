@@ -1,4 +1,4 @@
-package temp
+package tempsh
 
 import (
 	"fmt"

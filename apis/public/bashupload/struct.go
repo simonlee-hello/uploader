@@ -1,4 +1,4 @@
-package temp
+package bashupload
 
 import (
 	"io"
