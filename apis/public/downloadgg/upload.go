@@ -35,7 +35,7 @@ func (b *dlg) DoUpload(name string, size int64, file io.Reader) error {
 }
 
 func (b *dlg) PostUpload(string, int64) (string, error) {
-	fmt.Printf("Download Link: %s\n", b.resp)
+	fmt.Println(b.resp)
 	return b.resp, nil
 }
 
@@ -91,8 +91,7 @@ func (b dlg) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	req.ContentLength = totalSize
 	req.Header.Set("content-length", strconv.FormatInt(totalSize, 10))
 	req.Header.Set("content-type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
-		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
+	req.Header.Set("User-Agent", apis.DefaultUA)
 	if config.debug {
 		log.Printf("header: %v", req.Header)
 	}

@@ -1,15 +1,14 @@
 package apis
 
 import (
-	"github.com/cheggaaa/pb/v3"
-	"github.com/spf13/cobra"
 	"io"
 	"net/http"
+
+	"uploader/utils"
 )
 
 type BaseBackend interface {
 	Uploader
-	SetArgs(*cobra.Command)
 	LinkMatcher(string) bool
 }
 
@@ -26,44 +25,35 @@ type Uploader interface {
 
 type Backend struct {
 	BaseBackend
-	Bar *pb.ProgressBar
+	prog *utils.ProgressReader
 }
 
 func (b *Backend) StartProgress(stream io.Reader, size int64) io.Reader {
-	bar := pb.Full.Start64(size)
-	reader := bar.NewProxyReader(stream)
-	b.Bar = bar
-	return reader
+	b.prog = utils.NewProgressReader(stream, size)
+	return b.prog
 }
 
-func (b Backend) EndProgress() {
-	b.Bar.Finish()
+func (b *Backend) EndProgress() {
+	if b.prog != nil {
+		b.prog.Finish()
+		b.prog = nil
+	}
 }
 
-func (b Backend) InitUpload([]string, []int64) error {
-	return nil
-}
-
-func (b Backend) FinishUpload([]string) (string, error) {
-	return "", nil
-}
-
-func (b Backend) PreUpload(string, int64) error {
-	return nil
-}
-
+func (b Backend) InitUpload([]string, []int64) error { return nil }
+func (b Backend) FinishUpload([]string) (string, error) { return "", nil }
+func (b Backend) PreUpload(string, int64) error         { return nil }
 func (b Backend) DoUpload(string, int64, io.Reader) error {
-	panic("method DoUpload is not implemented")
+	panic("DoUpload not implemented")
 }
+func (b Backend) PostUpload(string, int64) (string, error) { return "", nil }
+func (b Backend) LinkMatcher(string) bool                   { return false }
 
-func (b Backend) PostUpload(string, int64) (string, error) {
-	return "", nil
-}
+const DefaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 
 func AddHeaders(req *http.Request) {
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
-		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
-	req.Header.Add("accept-language", "zh-CN,zh;q=0.9,en;")
+	req.Header.Set("User-Agent", DefaultUA)
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Origin", req.Host)
 	req.Header.Set("Referer", req.Host)
 }

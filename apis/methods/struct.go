@@ -1,9 +1,7 @@
 package methods
 
 import (
-	"github.com/cheggaaa/pb/v3"
 	"io"
-	"os"
 )
 
 type MultiPartUploadConfig struct {
@@ -12,6 +10,7 @@ type MultiPartUploadConfig struct {
 	FileName   string
 	FileReader io.Reader
 	FileSize   int64
+	Headers    map[string]string
 }
 
 type TransferConfig struct {
@@ -20,10 +19,4 @@ type TransferConfig struct {
 	NoBarMode  bool
 	CryptoMode bool
 	CryptoKey  string
-}
-
-type writeCounter struct {
-	bar    *pb.ProgressBar
-	offset int64
-	writer *os.File
 }

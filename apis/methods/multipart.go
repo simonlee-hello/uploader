@@ -5,87 +5,126 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 )
 
+const defaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
+func newUploadClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		DialContext:         dialer.DialContext,
+		ForceAttemptHTTP2:   false,
+		TLSNextProto:        map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
+		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout: 15 * time.Second,
+		IdleConnTimeout:     60 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	return &http.Client{
+		Transport: transport,
+		Timeout:   10 * time.Minute,
+	}
+}
+
+// MultipartUpload streams a single file field named "file" to endpoint.
 func MultipartUpload(config MultiPartUploadConfig) ([]byte, error) {
 	if config.Debug {
-		log.Printf("start upload")
+		log.Printf("start upload -> %s", config.Endpoint)
 	}
-	fr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Transport: fr}
+	return multipartUploadOnce(config)
+}
 
-	byteBuf := &bytes.Buffer{}
-	writer := multipart.NewWriter(byteBuf)
-	_, err := writer.CreateFormFile("file", config.FileName)
-	if err != nil {
+func multipartUploadOnce(config MultiPartUploadConfig) ([]byte, error) {
+	client := newUploadClient()
+
+	headerBuf := &bytes.Buffer{}
+	writer := multipart.NewWriter(headerBuf)
+	if _, err := writer.CreateFormFile("file", config.FileName); err != nil {
 		return nil, err
 	}
-
-	writerLength := byteBuf.Len()
-	writerBody := make([]byte, writerLength)
-	_, _ = byteBuf.Read(writerBody)
+	headerBytes := append([]byte(nil), headerBuf.Bytes()...)
+	boundary := writer.Boundary()
+	// Close only to finalize writer state; closing bytes are rebuilt below for streaming.
 	_ = writer.Close()
 
-	lastBoundary := fmt.Sprintf("\r\n--%s--\r\n", writer.Boundary())
-	totalSize := int64(writerLength) + config.FileSize + int64(len(lastBoundary))
-	partR, partW := io.Pipe()
+	lastBoundary := []byte("\r\n--" + boundary + "--\r\n")
+	totalSize := int64(len(headerBytes)) + config.FileSize + int64(len(lastBoundary))
 
+	partR, partW := io.Pipe()
 	go func() {
-		_, _ = partW.Write(writerBody)
-		for {
-			buf := make([]byte, 256)
-			nr, err := io.ReadFull(config.FileReader, buf)
-			if nr <= 0 {
-				break
+		var fail error
+		defer func() {
+			if fail != nil {
+				_ = partW.CloseWithError(fail)
+				return
 			}
-			if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-				fmt.Println(err)
-				break
-			}
-			if nr > 0 {
-				_, _ = partW.Write(buf[:nr])
-			}
+			_ = partW.Close()
+		}()
+		if _, fail = partW.Write(headerBytes); fail != nil {
+			return
 		}
-		_, _ = fmt.Fprintf(partW, lastBoundary)
-		_ = partW.Close()
+		if _, fail = io.Copy(partW, config.FileReader); fail != nil {
+			return
+		}
+		_, fail = partW.Write(lastBoundary)
 	}()
 
-	req, err := http.NewRequest("POST", config.Endpoint, partR)
+	req, err := http.NewRequest(http.MethodPost, config.Endpoint, partR)
 	if err != nil {
+		_ = partR.Close()
 		return nil, err
 	}
 	req.ContentLength = totalSize
-	req.Header.Set("content-length", strconv.FormatInt(totalSize, 10))
-	req.Header.Set("content-type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
+	req.Header.Set("Content-Length", strconv.FormatInt(totalSize, 10))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary="+boundary)
+	req.Header.Set("User-Agent", defaultUA)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	for k, v := range config.Headers {
+		req.Header.Set(k, v)
+	}
+
 	if config.Debug {
 		log.Printf("header: %v", req.Header)
 	}
+
 	resp, err := client.Do(req)
 	if err != nil {
-		if config.Debug {
-			log.Printf("do requests returns error: %v", err)
-		}
 		return nil, err
 	}
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		if config.Debug {
-			log.Printf("read response returns: %v", err)
-		}
-		return nil, err
-	}
-	_ = resp.Body.Close()
-	if config.Debug {
-		log.Printf("returns: %v", string(body))
-	}
+	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		msg := strings.TrimSpace(string(body))
+		if strings.EqualFold(msg, "Blacklisted") || strings.Contains(strings.ToLower(msg), "blacklisted") {
+			return nil, fmt.Errorf("http %d: ip blacklisted", resp.StatusCode)
+		}
+		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, truncate(msg, 120))
+	}
+	if config.Debug {
+		log.Printf("returns: %s", truncate(string(body), 300))
+	}
 	return body, nil
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }

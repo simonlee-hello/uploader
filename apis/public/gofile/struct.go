@@ -3,7 +3,7 @@ package gofile
 import "io"
 
 type goFileOptions struct {
-	singleMode bool
+	SingleMode bool
 }
 
 type respBody struct {

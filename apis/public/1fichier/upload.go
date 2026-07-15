@@ -5,16 +5,17 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"github.com/jlaffaye/ftp"
 	"io"
 	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"uploader/apis"
+	"uploader/utils"
 )
 
 const (
@@ -43,32 +44,29 @@ var (
 )
 
 func (b *fichier) DoUpload(name string, size int64, file io.Reader) error {
-
 	var lastErr error
-	// 优先使用FTP进行上传
 	if b.useFTP {
 		lastErr = b.uploadViaFTP(name, file)
 		if lastErr != nil {
-			fmt.Println("FTP upload error:", lastErr)
+			fmt.Fprintf(os.Stderr, "ftp: %v\n", lastErr)
 		} else {
-			b.resp = "ftp uploaded successfully"
-			b.remove = "Null"
+			b.resp = "ftp ok"
+			b.remove = ""
 			return nil
 		}
 	}
-	lastErr = b.uploadViaHTTP(name, size, file)
-	return lastErr
+	return b.uploadViaHTTP(name, size, file)
 }
 
 func (b *fichier) PostUpload(string, int64) (string, error) {
-	if b.useFTP {
-		fmt.Println("result: ", b.resp)
-	} else {
-		fmt.Printf("Download Link: %s\n", b.resp)
-		if b.pwd != "" {
-			fmt.Printf("Download Password: %s\n", b.pwd)
-		}
-		fmt.Printf("Remove Code: %s\n", b.remove)
+	if b.resp != "" {
+		fmt.Println(b.resp)
+	}
+	if b.pwd != "" {
+		fmt.Fprintf(os.Stderr, "password: %s\n", b.pwd)
+	}
+	if b.remove != "" {
+		fmt.Fprintf(os.Stderr, "remove: %s\n", b.remove)
 	}
 	return b.resp, nil
 }
@@ -135,8 +133,7 @@ func (b fichier) newMultipartUpload(config uploadConfig) ([]byte, error) {
 
 	req.Header.Set("content-length", strconv.FormatInt(totalSize, 10))
 	req.Header.Set("content-type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
-		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
+	req.Header.Set("User-Agent", apis.DefaultUA)
 	if config.debug {
 		log.Printf("header: %v", req.Header)
 	}
@@ -195,39 +192,17 @@ func (b *fichier) uploadViaHTTP(name string, size int64, file io.Reader) error {
 }
 
 func (b *fichier) uploadViaFTP(fileName string, file io.Reader) error {
-	fmt.Println("upload Via FTP...")
-	conn, err := ftp.Dial(ftpServer)
-	if err != nil {
-		return fmt.Errorf("failed to connect to FTP server: %w", err)
-	}
-	defer conn.Quit()
-
-	err = conn.Login(ftpUser, ftpPassword)
-	if err != nil {
-		return fmt.Errorf("failed to login to FTP server: %w", err)
-	}
-
-	err = conn.Stor(fileName, file)
-	if err != nil {
-		return fmt.Errorf("failed to store file on FTP server: %w", err)
-	}
-
-	//fmt.Println("FTP upload successful")
-	return nil
+	return utils.FTPUpload(ftpServer, ftpUser, ftpPassword, fileName, file)
 }
 
 func getUploadURL(domain string) (string, error) {
-	// 构建请求
 	url := fmt.Sprintf("https://api.%s/v1/upload/get_upload_server.cgi", domain)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", err
 	}
-
-	// 设置请求头
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
-		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
+	req.Header.Set("User-Agent", apis.DefaultUA)
 
 	// 发送请求
 	fr := &http.Transport{

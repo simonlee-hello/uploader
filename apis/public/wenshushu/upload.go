@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -19,8 +20,6 @@ import (
 	"uploader/apis"
 	"uploader/crypto"
 	"uploader/utils"
-
-	"github.com/mr-tron/base58"
 )
 
 const (
@@ -37,7 +36,7 @@ const (
 )
 
 func (b *wssTransfer) InitUpload(_ []string, sizes []int64) error {
-	if b.Config.singleMode {
+	if b.Config.SingleMode {
 		totalSize := int64(0)
 		for _, v := range sizes {
 			totalSize += v
@@ -58,7 +57,7 @@ func (b *wssTransfer) initUpload(totalSize int64, totalCount int) error {
 }
 
 func (b *wssTransfer) PreUpload(_ string, size int64) error {
-	if !b.Config.singleMode {
+	if !b.Config.SingleMode {
 		return b.initUpload(size, 1)
 	}
 	return nil
@@ -66,9 +65,9 @@ func (b *wssTransfer) PreUpload(_ string, size int64) error {
 
 func (b wssTransfer) DoUpload(name string, size int64, file io.Reader) error {
 
-	if size/int64(b.Config.blockSize) > 10000 {
-		b.Config.blockSize = int(size / 10000)
-		fmt.Printf("blocksize too small, set to %d\n", b.Config.blockSize)
+	if size/int64(b.Config.BlockSize) > 10000 {
+		b.Config.BlockSize = int(size / 10000)
+		fmt.Printf("blocksize too small, set to %d\n", b.Config.BlockSize)
 	}
 
 	wg := new(sync.WaitGroup)
@@ -79,7 +78,7 @@ func (b wssTransfer) DoUpload(name string, size int64, file io.Reader) error {
 	part := int64(0)
 	for {
 		part++
-		buf := make([]byte, b.Config.blockSize)
+		buf := make([]byte, b.Config.BlockSize)
 		nr, err := io.ReadFull(file, buf)
 		if nr <= 0 {
 			break
@@ -111,14 +110,14 @@ func (b wssTransfer) DoUpload(name string, size int64, file io.Reader) error {
 }
 
 func (b wssTransfer) PostUpload(string, int64) (string, error) {
-	if !b.Config.singleMode {
+	if !b.Config.SingleMode {
 		return b.completeUpload(b.baseConf)
 	}
 	return "", nil
 }
 
 func (b wssTransfer) FinishUpload([]string) (string, error) {
-	if b.Config.singleMode {
+	if b.Config.SingleMode {
 		return b.completeUpload(b.baseConf)
 	}
 	return "", nil
@@ -130,13 +129,13 @@ func (b wssTransfer) uploader(ch *chan *uploadPart, config sendConfigBlock) {
 			"ispart": true,
 			"fname":  item.name,
 			"partnu": item.count,
-			"fsize":  b.Config.blockSize,
+			"fsize":  b.Config.BlockSize,
 			"upId":   config.UploadID,
 		})
 		uploadTicket, err := newRequest(getUpURL, string(d), requestConfig{
 			debug:    apis.DebugMode,
 			retry:    0,
-			timeout:  time.Duration(b.Config.interval) * time.Second,
+			timeout:  time.Duration(b.Config.Interval) * time.Second,
 			modifier: addToken(config.Token),
 		})
 		if err != nil {
@@ -150,7 +149,7 @@ func (b wssTransfer) uploader(ch *chan *uploadPart, config sendConfigBlock) {
 		tr := &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
-		client := http.Client{Timeout: time.Duration(b.Config.interval) * time.Second, Transport: tr}
+		client := http.Client{Timeout: time.Duration(b.Config.Interval) * time.Second, Transport: tr}
 		data := new(bytes.Buffer)
 		data.Write(item.content)
 		if apis.DebugMode {
@@ -211,7 +210,7 @@ func (b wssTransfer) finishUpload(config sendConfigBlock, name string) error {
 	body, err := newRequest(complete, string(d), requestConfig{
 		debug:    apis.DebugMode,
 		retry:    0,
-		timeout:  time.Duration(b.Config.interval) * time.Second,
+		timeout:  time.Duration(b.Config.Interval) * time.Second,
 		modifier: addToken(config.Token),
 	})
 	if err != nil {
@@ -233,7 +232,7 @@ func (b wssTransfer) completeUpload(config sendConfigBlock) (string, error) {
 		body, err := newRequest(process, string(d), requestConfig{
 			debug:    apis.DebugMode,
 			retry:    0,
-			timeout:  time.Duration(b.Config.interval) * time.Second,
+			timeout:  time.Duration(b.Config.Interval) * time.Second,
 			modifier: addToken(config.Token),
 		})
 		if err != nil {
@@ -257,7 +256,7 @@ func (b wssTransfer) completeUpload(config sendConfigBlock) (string, error) {
 	body, err := newRequest(finish, string(d), requestConfig{
 		debug:    apis.DebugMode,
 		retry:    0,
-		timeout:  time.Duration(b.Config.interval) * time.Second,
+		timeout:  time.Duration(b.Config.Interval) * time.Second,
 		modifier: addToken(config.Token),
 	})
 	if err != nil {
@@ -266,13 +265,13 @@ func (b wssTransfer) completeUpload(config sendConfigBlock) (string, error) {
 	if body.Message != "success" {
 		return "", fmt.Errorf("status != success")
 	}
-	fmt.Printf("Manage Link: %s\nDownload Link: %s\n", body.Data.ManageURL, body.Data.PublicURL)
+	fmt.Fprintf(os.Stderr, "manage: %s\n", body.Data.ManageURL); fmt.Println(body.Data.PublicURL)
 	return body.Data.PublicURL, nil
 }
 
 func (b wssTransfer) getTicket() (string, error) {
-	if b.Config.token != "" {
-		return b.Config.token, nil
+	if b.Config.Token != "" {
+		return b.Config.Token, nil
 	}
 	if apis.DebugMode {
 		log.Println("getToken...")
@@ -280,7 +279,7 @@ func (b wssTransfer) getTicket() (string, error) {
 	config, err := newRequest(anonymous, "{\"dev_info\":\"{}\"}", requestConfig{
 		debug:    apis.DebugMode,
 		retry:    0,
-		timeout:  time.Duration(b.Config.interval) * time.Second,
+		timeout:  time.Duration(b.Config.Interval) * time.Second,
 		modifier: addToken(""),
 	})
 	if err != nil {
@@ -296,7 +295,7 @@ func (b wssTransfer) encrypt(ts, token string, data []byte) (string, error) {
 	md5Hash.Write(data)
 	md5Hash.Write([]byte(token))
 	md5Str := hex.EncodeToString(md5Hash.Sum(nil))
-	hashStr := []byte(base58.Encode([]byte(md5Str)))
+	hashStr := []byte(utils.Base58Encode([]byte(md5Str)))
 	var timeIV []byte
 	for _, k := range utils.Reverse(ts)[:5] {
 		pos, _ := strconv.Atoi(string(k))
@@ -358,7 +357,7 @@ func (b wssTransfer) getSendConfig(totalSize int64, totalCount int) (*sendConfig
 		"downPreCountLimit": 0,
 		"notDownload":       false,
 		"notSaveTo":         false,
-		"pwd":               "",
+		"pwd":               b.Config.PassCode,
 		"expire":            "1",
 		"recvs":             []string{"social", "public"},
 		"file_size":         totalSize,
@@ -373,7 +372,7 @@ func (b wssTransfer) getSendConfig(totalSize int64, totalCount int) (*sendConfig
 	config, err := newRequest(addSend, string(data), requestConfig{
 		debug:    apis.DebugMode,
 		retry:    0,
-		timeout:  time.Duration(b.Config.interval) * time.Second,
+		timeout:  time.Duration(b.Config.Interval) * time.Second,
 		modifier: addToken(ticket, respDat.Data.Time, encData),
 	})
 	if err != nil {
@@ -395,7 +394,7 @@ func (b wssTransfer) getSendConfig(totalSize int64, totalCount int) (*sendConfig
 	upData, err := newRequest(getUpID, string(data), requestConfig{
 		debug:    apis.DebugMode,
 		retry:    0,
-		timeout:  time.Duration(b.Config.interval) * time.Second,
+		timeout:  time.Duration(b.Config.Interval) * time.Second,
 		modifier: addToken(ticket),
 	})
 	if err != nil {
@@ -496,7 +495,7 @@ func addHeaders(req *http.Request) {
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Referer", "https://www.wenshushu.cn/")
 	req.Header.Set("authority", "www.wenshushu.cn")
-	req.Header.Set("accept-language", "zh-CN, en;q=0.9")
+	req.Header.Set("accept-language", "en-US,en;q=0.9")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/11.1.2 Safari/605.1.15")
 	req.Header.Set("Origin", "https://www.wenshushu.cn")
 }

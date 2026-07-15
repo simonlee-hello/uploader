@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
+	"uploader/crypto"
 )
 
 func Upload(files []string, backend BaseBackend) {
@@ -13,6 +13,7 @@ func Upload(files []string, backend BaseBackend) {
 	if MuteMode {
 		transferConfig.NoBarMode = true
 		os.Stdout, _ = os.Open(os.DevNull)
+		defer func() { os.Stdout = tmpOut }()
 	}
 	var (
 		sizes []int64
@@ -31,85 +32,123 @@ func Upload(files []string, backend BaseBackend) {
 			return nil
 		})
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "filepath.walk failed: %v, onfile: %s\n", err, v)
+			fmt.Fprintf(os.Stderr, "walk: %v\n", err)
 			return
 		}
 	}
-	err := backend.InitUpload(paths, sizes)
-	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error occurred during initialization:\n  %s\n", err)
+
+	if transferConfig.CryptoMode {
+		displayKey, normalized, err := crypto.NormalizeKey(transferConfig.CryptoKey, true)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "encrypt: %v\n", err)
+			return
+		}
+		transferConfig.CryptoKey = normalized
+		fmt.Fprintf(os.Stderr, "key: %s\n", displayKey)
+		for i := range sizes {
+			sizes[i] = crypto.CalcEncryptSize(sizes[i])
+		}
+	}
+
+	if err := backend.InitUpload(paths, sizes); err != nil {
+		fmt.Fprintf(os.Stderr, "init: %v\n", err)
 		return
 	}
 	for n, file := range paths {
-		ps, _ := filepath.Abs(file)
-		fmt.Printf("Local: %s\n", ps)
 		resp, err := upload(file, sizes[n], backend)
 		if err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "Error occurred during upload %s:\n  %s\n", file, err)
+			fmt.Fprintf(os.Stderr, "upload %s: %v\n", filepath.Base(file), err)
 		}
 		if resp != "" && MuteMode {
-			_, _ = fmt.Fprintln(tmpOut, resp)
+			fmt.Fprintln(tmpOut, resp)
 		}
 		if resp != "" && Output != "" {
-
 			f, err := os.OpenFile(Output, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 			if err != nil {
-				_, _ = fmt.Fprintf(os.Stderr, "Error opening output file %s: %v\n", Output, err)
+				fmt.Fprintf(os.Stderr, "result file: %v\n", err)
 			} else {
-				defer f.Close()
-				if _, err := f.Write([]byte(resp + "\n")); err != nil {
-					_, _ = fmt.Fprintf(os.Stderr, "Error appending output to file %s: %v\n", Output, err)
-				} else {
-					fmt.Printf("Output appended to %s\n", Output)
-				}
+				_, _ = f.Write([]byte(resp + "\n"))
+				_ = f.Close()
 			}
 		}
 	}
 	resp, err := backend.FinishUpload(files)
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "Error occurred during finalizing upload:\n  %s\n", err)
+		fmt.Fprintf(os.Stderr, "finish: %v\n", err)
 	}
 	if resp != "" && MuteMode {
-		_, _ = fmt.Fprintln(tmpOut, resp)
+		fmt.Fprintln(tmpOut, resp)
 	}
 }
 
-func monitor(w *io.PipeWriter, sig *sync.WaitGroup) {
-	sig.Wait()
-	_ = w.Close()
+func UploadFile(path string, backend BaseBackend) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	size := info.Size()
+	nameSize := size
+	if transferConfig.CryptoMode {
+		nameSize = crypto.CalcEncryptSize(size)
+	}
+	if err := backend.InitUpload([]string{path}, []int64{nameSize}); err != nil {
+		return "", err
+	}
+	link, err := upload(path, size, backend)
+	if err != nil {
+		return "", err
+	}
+	finish, err := backend.FinishUpload([]string{path})
+	if err != nil {
+		return link, err
+	}
+	if finish != "" {
+		return finish, nil
+	}
+	return link, nil
 }
 
 func upload(file string, size int64, backend BaseBackend) (string, error) {
 	info, err := os.Stat(file)
 	if err != nil {
-		return "", fmt.Errorf("stat file %s failed: %s", file, err)
+		return "", err
 	}
-	err = backend.PreUpload(info.Name(), size)
-	if err != nil {
-		return "", fmt.Errorf("start upload failed: %s", err)
+
+	name := info.Name()
+	uploadSize := size
+	if transferConfig.CryptoMode {
+		uploadSize = crypto.CalcEncryptSize(size)
+		name = name + ".encrypt"
+	}
+
+	if err = backend.PreUpload(name, uploadSize); err != nil {
+		return "", err
 	}
 	fileStream, err := os.Open(file)
 	if err != nil {
-		return "", fmt.Errorf("open %s failed: %s", file, err)
+		return "", err
 	}
-	var reader io.Reader
+	defer fileStream.Close()
 
-	reader = fileStream
+	var reader io.Reader = fileStream
+	if transferConfig.CryptoMode {
+		pr, pw := io.Pipe()
+		go func() {
+			encErr := crypto.StreamEncrypt(fileStream, pw, transferConfig.CryptoKey, 0)
+			_ = pw.CloseWithError(encErr)
+		}()
+		reader = pr
+	}
+
 	if !transferConfig.NoBarMode {
-		reader = backend.StartProgress(fileStream, size)
+		reader = backend.StartProgress(reader, uploadSize)
 	}
 
-	err = backend.DoUpload(info.Name(), size, reader)
-	if err != nil {
-		return "", fmt.Errorf("upload error: %s", err)
+	if err = backend.DoUpload(name, uploadSize, reader); err != nil {
+		return "", err
 	}
-	_ = fileStream.Close()
 	if !transferConfig.NoBarMode {
 		backend.EndProgress()
 	}
-	resp, err := backend.PostUpload(info.Name(), size)
-	if err != nil {
-		return "", fmt.Errorf("postUpload error: %s", err)
-	}
-	return resp, nil
+	return backend.PostUpload(name, uploadSize)
 }

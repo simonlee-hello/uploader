@@ -10,29 +10,16 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strconv"
-	"uploader/apis"
 )
 
 const upload = "https://0x0.st/"
 
 func (b *null) DoUpload(name string, size int64, file io.Reader) error {
-
-	body, err := b.newMultipartUpload(uploadConfig{
-		fileSize:   size,
-		fileName:   name,
-		fileReader: file,
-		debug:      apis.DebugMode,
-	})
-	if err != nil {
-		return fmt.Errorf("upload returns error: %s", err)
-	}
-
-	b.resp = string(body[:len(body)-1])
-	return nil
+	return fmt.Errorf("0x0.st uploads disabled")
 }
 
 func (b *null) PostUpload(string, int64) (string, error) {
-	fmt.Printf("Download Link: %s\n", b.resp)
+	fmt.Println(b.resp)
 	return b.resp, nil
 }
 

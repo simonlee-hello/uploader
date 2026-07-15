@@ -32,6 +32,6 @@ func (b *temp) DoUpload(name string, size int64, file io.Reader) error {
 }
 
 func (b *temp) PostUpload(string, int64) (string, error) {
-	fmt.Printf("Download Link: %s\n", b.resp)
+	fmt.Println(b.resp)
 	return b.resp, nil
 }

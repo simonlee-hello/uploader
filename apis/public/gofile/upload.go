@@ -6,15 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
 	"uploader/apis"
-	"uploader/utils"
 )
 
 const (
@@ -32,7 +31,7 @@ func (b *goFile) InitUpload(_ []string, sizes []int64) error {
 }
 
 func smallParser(body *http.Response, result any) error {
-	data, err := ioutil.ReadAll(body.Body)
+	data, err := io.ReadAll(body.Body)
 	if err != nil {
 		return fmt.Errorf("read body returns error: %v", err)
 	}
@@ -53,59 +52,75 @@ func smallParser(body *http.Response, result any) error {
 
 func (b *goFile) selectServer() error {
 
-	fmt.Printf("Selecting server..")
-	end := utils.DotTicker()
+	fmt.Fprint(os.Stderr, "selecting server...")
 	body, err := http.Get(getServer)
 	if err != nil {
-		return fmt.Errorf("request %s returns error: %v", getServer, err)
+		return fmt.Errorf("request %s: %v", getServer, err)
 	}
 
-	data, err := ioutil.ReadAll(body.Body)
+	data, err := io.ReadAll(body.Body)
 	if err != nil {
-		return fmt.Errorf("read body returns error: %v", err)
+		return err
 	}
 	_ = body.Body.Close()
 
 	var sevData respBody
 	if err := json.Unmarshal(data, &sevData); err != nil {
-		return fmt.Errorf("parse body returns error: %v", err)
+		return err
 	}
-	*end <- struct{}{}
-	fmt.Printf("%s\n", strings.TrimSpace(sevData.Data.Servers[0].Name))
+	fmt.Fprintf(os.Stderr, " %s\n", strings.TrimSpace(sevData.Data.Servers[0].Name))
 	b.serverLink = fmt.Sprintf("https://%s.gofile.io/contents/uploadfile", strings.TrimSpace(sevData.Data.Servers[0].Name))
 	return nil
 }
 
 func (b *goFile) DoUpload(name string, size int64, file io.Reader) error {
-
 	body, err := b.newMultipartUpload(uploadConfig{
 		fileSize:   size,
 		fileName:   name,
 		fileReader: file,
 		debug:      apis.DebugMode,
 	})
-
-	// Get download link from response
-	var respData uploadResp
-	err = json.Unmarshal(body, &respData)
 	if err != nil {
+		return fmt.Errorf("upload returns error: %s", err)
+	}
+
+	var respData uploadResp
+	if err := json.Unmarshal(body, &respData); err != nil {
 		if apis.DebugMode {
 			log.Printf("parse response error: %v", err)
 		}
 		return err
 	}
-
-	b.downloadLink = respData.Data.DownloadPage
-	if err != nil {
-		return fmt.Errorf("upload returns error: %s", err)
+	if respData.Status != "" && respData.Status != "ok" {
+		return fmt.Errorf("upload failed: %s", string(body))
 	}
 
+	b.downloadLink = respData.Data.DownloadPage
+	if b.Config.SingleMode {
+		if b.userToken == "" && respData.Data.GuestToken != "" {
+			b.userToken = respData.Data.GuestToken
+		}
+		if b.folderID == "" && respData.Data.ParentFolder != "" {
+			b.folderID = respData.Data.ParentFolder
+		}
+	}
 	return nil
 }
 
 func (b *goFile) PostUpload(string, int64) (string, error) {
-	fmt.Printf("Download Link: %s\n", b.downloadLink)
+	if b.Config.SingleMode {
+		return "", nil
+	}
+	fmt.Println(b.downloadLink)
 	return b.downloadLink, nil
+}
+
+func (b *goFile) FinishUpload([]string) (string, error) {
+	if b.Config.SingleMode && b.downloadLink != "" {
+		fmt.Println(b.downloadLink)
+		return b.downloadLink, nil
+	}
+	return "", nil
 }
 func (b *goFile) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
@@ -164,8 +179,7 @@ func (b *goFile) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	req.ContentLength = totalSize
 	req.Header.Set("content-length", strconv.FormatInt(totalSize, 10))
 	req.Header.Set("content-type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("User-Agent", "Mozilla/5.0 (X11; U; Linux x86_64; zh-CN; rv:1.9.2.10) "+
-		"Gecko/20100922 Ubuntu/10.10 (maverick) Firefox/3.6.10")
+	req.Header.Set("User-Agent", apis.DefaultUA)
 	if config.debug {
 		log.Printf("header: %v", req.Header)
 	}
@@ -177,7 +191,7 @@ func (b *goFile) newMultipartUpload(config uploadConfig) ([]byte, error) {
 		return nil, err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		if config.debug {
 			log.Printf("read response returns: %v", err)

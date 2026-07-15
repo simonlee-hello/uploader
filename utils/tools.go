@@ -23,17 +23,13 @@ func Reverse(s string) string {
 // IsExist returns true if given path is exist.
 func IsExist(path string) bool {
 	_, err := os.Stat(path)
-	if err != nil {
-		if os.IsExist(err) {
-			return true
-		}
-		if os.IsNotExist(err) {
-			return false
-		}
-		//log.Println(err)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
 		return false
 	}
-	return true
+	return false
 }
 
 // IsDir returns true if given path is a folder.

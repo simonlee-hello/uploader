@@ -8,7 +8,7 @@ LDFLAGS-Win := -ldflags '-s -w -extldflags "-static"' -gcflags="all=-trimpath=${
 .PHONY: all setup build-linux build-osx build-windows
 all: setup build-linux build-freebsd build-osx build-windows
 
-Name := transfer
+Name := uploader
 
 setup:
 	mkdir -p bin/linux

@@ -1,15 +1,12 @@
 package crypto
 
 import (
+	"flag"
 	"fmt"
-	"github.com/cheggaaa/pb/v3"
-	"github.com/spf13/cobra"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"uploader/utils"
 )
 
@@ -18,18 +15,28 @@ var (
 	Prefix    string
 	Key       string
 	NoBar     bool
-	blockSize int64
 )
 
-func InitCmd(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&Prefix,
-		"output", "o", ".", "Write to another file/folder")
-	cmd.Flags().StringVarP(&Key,
-		"key", "k", "", "Set encrypt/decrypt password")
-	cmd.Flags().BoolVarP(&ForceMode,
-		"force", "f", false, "Attempt to process file regardless error")
-	cmd.Flags().BoolVarP(&NoBar,
-		"no-progress", "", false, "Disable Progress Bar to reduce output")
+func RegisterFlags(fs *flag.FlagSet) {
+	fs.StringVar(&Prefix, "output", ".", "output file or directory")
+	fs.StringVar(&Key, "key", "", "password")
+	fs.BoolVar(&ForceMode, "force", false, "overwrite existing output")
+	fs.BoolVar(&NoBar, "no-progress", false, "disable progress")
+}
+
+func NormalizeKey(key string, generateIfEmpty bool) (displayKey string, normalized string, err error) {
+	displayKey = key
+	if key == "" || len(key) > 32 {
+		if !generateIfEmpty {
+			return "", "", fmt.Errorf("key required")
+		}
+		displayKey = utils.GenRandString(16)
+		key = displayKey
+	}
+	if len(key) < 32 {
+		key = string(Padding([]byte(key), 32))
+	}
+	return displayKey, key, nil
 }
 
 func Encrypt(file string) error {
@@ -37,70 +44,54 @@ func Encrypt(file string) error {
 	if err != nil {
 		return err
 	}
-
 	var dest string
 	if utils.IsDir(Prefix) {
 		dest = filepath.Join(Prefix, filepath.Base(file)+".encrypt")
 	} else {
 		dest = Prefix
 	}
-
 	dest, err = filepath.Abs(dest)
 	if err != nil {
 		return err
 	}
-
 	if utils.IsExist(dest) && !strings.HasPrefix(dest, "/dev") && !ForceMode {
-		return fmt.Errorf("%s exists.(use -f to overwrite)", dest)
+		return fmt.Errorf("%s exists (use -force)", dest)
 	}
-
-	fmt.Printf("Local: %s\nDest: %s\n", path, dest)
 
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-
-	blockSize = int64(math.Min(1048576, float64(info.Size())))
-
 	src, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-
+	defer src.Close()
 	enc, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
+	defer enc.Close()
 
-	var writer io.Writer
-	var bar *pb.ProgressBar
+	var writer io.Writer = enc
+	var pw *utils.ProgressWriter
 	if !NoBar {
-		bar = pb.Full.Start64(CalcEncryptSize(info.Size()))
-		writer = bar.NewProxyWriter(enc)
-	} else {
-		writer = enc
+		pw = utils.NewProgressWriter(enc, CalcEncryptSize(info.Size()))
+		writer = pw
+		defer pw.Finish()
 	}
 
-	if Key == "" || len(Key) > 32 {
-		Key = utils.GenRandString(16)
-		fmt.Printf("Key is not set or incorrect: Setting it to %s\n", Key)
+	generated := Key == "" || len(Key) > 32
+	displayKey, normalized, err := NormalizeKey(Key, true)
+	if err != nil {
+		return err
 	}
-
-	if len(Key) < 32 {
-		Key = string(Padding([]byte(Key), 32))
-		//fmt.Printf("Key is not set or incorrect: Setting it to %s\n", Key)
+	Key = normalized
+	if generated {
+		fmt.Fprintf(os.Stderr, "key: %s\n", displayKey)
 	}
-
-	sig := new(sync.WaitGroup)
-	sig.Add(1)
-	StreamEncrypt(src, writer, Key, blockSize, sig)
-	if !NoBar && bar != nil {
-		bar.Finish()
-	}
-	_ = src.Close()
-	_ = enc.Close()
-	return nil
+	fmt.Fprintf(os.Stderr, "%s -> %s\n", path, dest)
+	return StreamEncrypt(src, writer, Key, 0)
 }
 
 func Decrypt(file string) error {
@@ -109,66 +100,47 @@ func Decrypt(file string) error {
 		return err
 	}
 	var dest string
-
 	if utils.IsDir(Prefix) {
-		dest = filepath.Join(Prefix, strings.Replace(file, ".encrypt", "", 1))
+		dest = filepath.Join(Prefix, strings.Replace(filepath.Base(file), ".encrypt", "", 1))
 	} else {
 		dest = Prefix
 	}
-
 	dest, err = filepath.Abs(dest)
 	if err != nil {
 		return err
 	}
-
 	if utils.IsExist(dest) && !strings.HasPrefix(dest, "/dev") && !ForceMode {
-		return fmt.Errorf("%s exists.(use -f to overwrite)", dest)
+		return fmt.Errorf("%s exists (use -force)", dest)
 	}
-
-	fmt.Printf("Local: %s\nDest: %s\n", path, dest)
-
-	info, err := os.Stat(path)
-	if err != nil {
-		return err
-	}
-
-	blockSize = int64(math.Min(1048576, float64(info.Size())))
 
 	src, err := os.Open(path)
 	if err != nil {
 		return err
 	}
-
+	defer src.Close()
+	info, err := src.Stat()
+	if err != nil {
+		return err
+	}
 	dec, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
+	defer dec.Close()
 
-	var writer io.Writer
-	var bar *pb.ProgressBar
+	var writer io.Writer = dec
+	var pw *utils.ProgressWriter
 	if !NoBar {
-		bar = pb.Full.Start64(info.Size())
-		writer = bar.NewProxyWriter(dec)
-	} else {
-		writer = dec
+		pw = utils.NewProgressWriter(dec, info.Size())
+		writer = pw
+		defer pw.Finish()
 	}
 
-	if Key == "" || len(Key) > 32 {
-		return fmt.Errorf("key is not set")
+	_, normalized, err := NormalizeKey(Key, false)
+	if err != nil {
+		return err
 	}
-
-	if len(Key) < 32 {
-		Key = string(Padding([]byte(Key), 32))
-		fmt.Printf("Key is not set or incorrect: Setting it to %s\n", Key)
-	}
-
-	sig := new(sync.WaitGroup)
-	sig.Add(1)
-	StreamDecrypt(src, writer, Key, blockSize, sig)
-	if !NoBar && bar != nil {
-		bar.Finish()
-	}
-	_ = src.Close()
-	_ = dec.Close()
-	return nil
+	Key = normalized
+	fmt.Fprintf(os.Stderr, "%s -> %s\n", path, dest)
+	return StreamDecrypt(src, writer, Key, 0)
 }

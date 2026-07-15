@@ -7,11 +7,11 @@ import (
 )
 
 type wssOptions struct {
-	token      string
-	interval   int
-	singleMode bool
-	blockSize  int
-	passCode   string
+	Token      string
+	Interval   int
+	SingleMode bool
+	BlockSize  int
+	PassCode   string
 	Parallel   int
 }
 

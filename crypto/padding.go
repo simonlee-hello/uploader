@@ -11,6 +11,9 @@ func Padding(src []byte, blockSize int) []byte {
 }
 
 func unPadding(src []byte) []byte {
-	n := len(src)
-	return src[:n-int(src[n-1])]
+	out, err := safeUnpadding(src)
+	if err != nil {
+		return src
+	}
+	return out
 }

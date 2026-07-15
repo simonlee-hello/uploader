@@ -1,3 +1,19 @@
 # Uploader
 
-集合多个 API 的大文件传输工具
+Multi-backend file upload CLI.
+
+## Build
+
+```bash
+go build -trimpath -ldflags '-s -w' -o uploader .
+```
+
+## Usage
+
+```bash
+uploader -b temp ./file.bin
+uploader backends
+uploader probe
+uploader probe temp lit gof -timeout 20
+uploader encrypt -key secret ./file
+```
