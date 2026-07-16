@@ -122,12 +122,17 @@ func runProbe(args []string) {
 	}
 
 	for _, r := range results {
-		if r.OK {
+		if !r.OK {
+			continue
+		}
+		info := findBackend(r.Name)
+		if info != nil && info.Status == "ok" {
 			fmt.Fprintf(os.Stderr, "\nrecommended: uploader -b %s <file>\n", r.Name)
 			return
 		}
 	}
 	fmt.Fprintln(os.Stderr, "\nno working backend for this network")
+	os.Exit(1)
 }
 
 func selectProbeTargets(names []string, all bool) []BackendInfo {
@@ -145,7 +150,7 @@ func selectProbeTargets(names []string, all bool) []BackendInfo {
 	}
 	var out []BackendInfo
 	for _, b := range backends {
-		if !all && b.Status == "down" {
+		if !all && b.Status != "ok" {
 			continue
 		}
 		out = append(out, b)

@@ -2,7 +2,6 @@ package downloadgg
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +12,7 @@ import (
 	"strings"
 
 	"uploader/apis"
+	"uploader/apis/methods"
 )
 
 const upload = "https://download.gg/server/upload5555.php"
@@ -43,10 +43,7 @@ func (b dlg) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Transport: tr}
+	client := methods.NewClient(0)
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)

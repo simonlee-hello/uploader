@@ -3,7 +3,6 @@ package wenshushu
 import (
 	"bytes"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"uploader/apis"
+	"uploader/apis/methods"
 	"uploader/crypto"
 	"uploader/utils"
 )
@@ -146,10 +146,7 @@ func (b wssTransfer) uploader(ch *chan *uploadPart, config sendConfigBlock) {
 			continue
 		}
 
-		tr := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
-		client := http.Client{Timeout: time.Duration(b.Config.Interval) * time.Second, Transport: tr}
+		client := methods.NewClient(time.Duration(b.Config.Interval) * time.Second)
 		data := new(bytes.Buffer)
 		data.Write(item.content)
 		if apis.DebugMode {
@@ -265,7 +262,10 @@ func (b wssTransfer) completeUpload(config sendConfigBlock) (string, error) {
 	if body.Message != "success" {
 		return "", fmt.Errorf("status != success")
 	}
-	fmt.Fprintf(os.Stderr, "manage: %s\n", body.Data.ManageURL); fmt.Println(body.Data.PublicURL)
+	if !apis.QuietMode {
+		fmt.Fprintf(os.Stderr, "manage: %s\n", body.Data.ManageURL)
+	}
+	fmt.Println(body.Data.PublicURL)
 	return body.Data.PublicURL, nil
 }
 
@@ -415,10 +415,7 @@ func newRequest(link string, postBody string, config requestConfig) (*sendConfig
 
 	}
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Timeout: config.timeout, Transport: tr}
+	client := methods.NewClient(config.timeout)
 	req, err := http.NewRequest("POST", link, bytes.NewReader([]byte(postBody)))
 	if err != nil {
 		if config.debug {

@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"uploader/apis"
+	"uploader/apis/methods"
 	fichier "uploader/apis/public/1fichier"
 	"uploader/apis/public/gofile"
 	"uploader/apis/public/wenshushu"
@@ -37,6 +39,10 @@ var (
 	flagEmail      string
 	flagFTP        bool
 	flagRecursive  bool
+	flagForce      bool
+	flagQuiet      bool
+	flagAuto       bool
+	flagHTTPTimeout int
 )
 
 func Execute() {
@@ -100,6 +106,11 @@ func newUploadFlagSet(name string) *flag.FlagSet {
 	fs.BoolVar(&flagFTP, "ftp", false, "1fichier ftp upload")
 	fs.BoolVar(&flagRecursive, "r", false, "upload each file under directory (no zip)")
 	fs.BoolVar(&flagRecursive, "recursive", false, "upload each file under directory (no zip)")
+	fs.BoolVar(&flagForce, "force", false, "allow flaky/down backends")
+	fs.BoolVar(&flagQuiet, "q", false, "quiet: stdout links only, no stderr info")
+	fs.BoolVar(&flagQuiet, "quiet", false, "quiet: stdout links only, no stderr info")
+	fs.BoolVar(&flagAuto, "auto", false, "try other backends on failure")
+	fs.IntVar(&flagHTTPTimeout, "http-timeout", 600, "HTTP timeout seconds (0=no limit)")
 	return fs
 }
 
@@ -107,11 +118,17 @@ func applyGlobalConfig() {
 	cfg := apis.TransferConfig()
 	cfg.CryptoMode = flagEncrypt
 	cfg.CryptoKey = flagEncryptKey
-	cfg.NoBarMode = flagNoProgress || flagSilent
+	cfg.NoBarMode = flagNoProgress || flagSilent || flagQuiet
 	cfg.RecursiveDirs = flagRecursive
-	apis.DebugMode = flagVerbose
-	apis.MuteMode = flagSilent
+	apis.DebugMode = flagVerbose && !flagQuiet
+	apis.MuteMode = flagSilent || flagQuiet
+	apis.QuietMode = flagQuiet
 	apis.Output = flagResult
+	if flagHTTPTimeout > 0 {
+		methods.HTTPTimeout = time.Duration(flagHTTPTimeout) * time.Second
+	} else {
+		methods.HTTPTimeout = 0
+	}
 }
 
 func applyBackendOptions(name string) {
@@ -149,7 +166,7 @@ func runUpload(args []string) {
 		"-k": true, "-key": true, "-encrypt-key": true,
 		"-o": true, "-result": true, "-password": true, "-cookie": true,
 		"-block": true, "-timeout": true, "-parallel": true,
-		"-api-key": true, "-email": true,
+		"-api-key": true, "-email": true, "-http-timeout": true,
 	})
 	fs := newUploadFlagSet("uploader")
 	fs.SetOutput(io.Discard)
@@ -162,7 +179,8 @@ func runUpload(args []string) {
 			if sug := suggestFlag(unknown, []string{
 				"b", "backend", "e", "encrypt", "k", "key", "encrypt-key",
 				"o", "result", "silent", "no-progress", "v", "verbose",
-				"password", "s", "single", "ftp", "r", "recursive", "h", "help",
+				"password", "s", "single", "ftp", "r", "recursive",
+				"force", "q", "quiet", "auto", "http-timeout", "h", "help",
 			}); sug != "" {
 				fmt.Fprintf(os.Stderr, "did you mean -%s?\n", sug)
 			}
@@ -179,45 +197,26 @@ func runUpload(args []string) {
 		return
 	}
 	applyGlobalConfig()
-	files := uploadWalker(fs.Args())
-	if flagBackend == "" {
-		if len(files) > 0 {
-			printBackendHint()
+	files, err := uploadWalker(fs.Args())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	auto := flagAuto || configAutoEnabled()
+	primary := strings.TrimSpace(flagBackend)
+	if primary == "" {
+		primary = resolveDefaultBackend()
+	}
+	if len(files) == 0 {
+		if primary != "" {
+			fmt.Fprintf(os.Stderr, "usage: uploader -b %s <file>\n", primary)
 			os.Exit(1)
 		}
 		printHelp()
 		return
 	}
-	info := findBackend(flagBackend)
-	if info == nil {
-		fmt.Fprintf(os.Stderr, "unknown backend %q\n", flagBackend)
-		os.Exit(1)
-	}
-	if len(files) == 0 {
-		fmt.Fprintf(os.Stderr, "usage: uploader -b %s <file>\n", info.Name)
-		os.Exit(1)
-	}
-	applyBackendOptions(info.Name)
-	cfg := apis.TransferConfig()
-	cfg.MaxBytes = info.MaxBytes()
-	cfg.BackendName = info.Name
-	apis.SizeHint = func(size int64) string {
-		alts := backendsFitting(size)
-		var filtered []string
-		for _, a := range alts {
-			if a != info.Name {
-				filtered = append(filtered, a)
-			}
-		}
-		if len(filtered) == 0 {
-			return ""
-		}
-		if len(filtered) > 6 {
-			filtered = filtered[:6]
-		}
-		return "try: -b " + strings.Join(filtered, " | -b ")
-	}
-	if err := apis.Upload(files, info.Backend); err != nil {
+	if err := uploadWithOptions(files, primary, auto, flagForce); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
@@ -258,7 +257,11 @@ func runCrypto(encrypt bool, args []string) {
 		printCryptoUsage(encrypt)
 		return
 	}
-	files := uploadWalker(fs.Args())
+	files, err := uploadWalker(fs.Args())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	if len(files) == 0 {
 		fmt.Fprintln(os.Stderr, "no file")
 		printCryptoUsage(encrypt)
@@ -312,11 +315,15 @@ Backends:
 	fmt.Print(formatBackendTable())
 	fmt.Print(`
 Flags:
-  -b, -backend      backend name
+  -b, -backend      backend name (default: temp / UPLOADER_BACKEND / config)
   -e, -encrypt      encrypt stream before upload
   -k, -key, -encrypt-key  encryption key (upload)
   -r, -recursive    upload each file under a directory (default: zip dir)
-  -silent           print link only
+  -q, -quiet        headless: links on stdout only, errors on stderr
+  -auto             try other ok backends on failure
+  -force            allow flaky/down backends
+  -http-timeout SEC global HTTP timeout (default 600, 0=none)
+  -silent           print link only (alias of quiet progress)
   -no-progress      disable progress
   -o, -result       append links to file (upload)
   -v                verbose
@@ -324,13 +331,19 @@ Flags:
   -s, -single       one link for many files (gof/wss)
   -ftp              1fichier FTP mode
 
+Headless deploy:
+  uploader -q -auto ./file          # quiet + auto failover
+  set UPLOADER_BACKEND=lit          # default backend (Windows/Linux)
+  config: ~/.config/uploader/config  # backend=lit, auto=true
+  avoid -keep in scripts (waits for Enter)
+
 Encrypt/decrypt:
   -k, -key, -encrypt-key  password
   -o, -output, -out output path
   -f, -force        overwrite output
 
 Probe:
-  -all              include disabled backends
+  -all              include flaky and down backends
   -parallel N       concurrency (default 3)
   -timeout SEC      per-backend timeout (default 45)
 `)

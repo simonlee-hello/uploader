@@ -2,40 +2,16 @@ package methods
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
 	"mime/multipart"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const defaultUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-
-func newUploadClient() *http.Client {
-	dialer := &net.Dialer{
-		Timeout:   30 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-	transport := &http.Transport{
-		Proxy:               http.ProxyFromEnvironment,
-		DialContext:         dialer.DialContext,
-		ForceAttemptHTTP2:   false,
-		TLSNextProto:        map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
-		TLSClientConfig:     &tls.Config{MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout: 15 * time.Second,
-		IdleConnTimeout:     60 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-	return &http.Client{
-		Transport: transport,
-		Timeout:   10 * time.Minute,
-	}
-}
 
 // MultipartUpload streams a single file field named "file" to endpoint.
 func MultipartUpload(config MultiPartUploadConfig) ([]byte, error) {
@@ -46,7 +22,7 @@ func MultipartUpload(config MultiPartUploadConfig) ([]byte, error) {
 }
 
 func multipartUploadOnce(config MultiPartUploadConfig) ([]byte, error) {
-	client := newUploadClient()
+	client := NewClient(0)
 
 	headerBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(headerBuf)

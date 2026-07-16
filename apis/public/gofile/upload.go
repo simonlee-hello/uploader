@@ -2,7 +2,6 @@ package gofile
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"strings"
 
 	"uploader/apis"
+	"uploader/apis/methods"
 )
 
 const (
@@ -52,8 +52,10 @@ func smallParser(body *http.Response, result any) error {
 
 func (b *goFile) selectServer() error {
 
-	fmt.Fprint(os.Stderr, "selecting server...")
-	body, err := http.Get(getServer)
+	if !apis.QuietMode {
+		fmt.Fprint(os.Stderr, "selecting server...")
+	}
+	body, err := methods.Get(getServer)
 	if err != nil {
 		return fmt.Errorf("request %s: %v", getServer, err)
 	}
@@ -68,7 +70,9 @@ func (b *goFile) selectServer() error {
 	if err := json.Unmarshal(data, &sevData); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, " %s\n", strings.TrimSpace(sevData.Data.Servers[0].Name))
+	if !apis.QuietMode {
+		fmt.Fprintf(os.Stderr, " %s\n", strings.TrimSpace(sevData.Data.Servers[0].Name))
+	}
 	b.serverLink = fmt.Sprintf("https://%s.gofile.io/contents/uploadfile", strings.TrimSpace(sevData.Data.Servers[0].Name))
 	return nil
 }
@@ -126,10 +130,7 @@ func (b *goFile) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Transport: tr}
+	client := methods.NewClient(0)
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)

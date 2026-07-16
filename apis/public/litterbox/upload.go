@@ -2,7 +2,6 @@ package litterbox
 
 import (
 	"bytes"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"uploader/apis"
+	"uploader/apis/methods"
 	"uploader/utils"
 )
 
@@ -42,10 +42,7 @@ func (b litterbox) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Transport: tr}
+	client := methods.NewClient(0)
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)

@@ -35,7 +35,9 @@ func Upload(files []string, backend BaseBackend) error {
 			return err
 		}
 		if info.IsDir() && !transferConfig.RecursiveDirs {
-			fmt.Fprintf(os.Stderr, "packing %s ...\n", v)
+			if !QuietMode {
+				fmt.Fprintf(os.Stderr, "packing %s ...\n", v)
+			}
 			zipPath, err := utils.ZipDirTemp(v)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "pack: %v\n", err)
@@ -47,7 +49,9 @@ func Upload(files []string, backend BaseBackend) error {
 				fmt.Fprintf(os.Stderr, "pack: %v\n", err)
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "packed %s (%s)\n", filepath.Base(zipPath), utils.FormatByteSize(zi.Size()))
+			if !QuietMode {
+				fmt.Fprintf(os.Stderr, "packed %s (%s)\n", filepath.Base(zipPath), utils.FormatByteSize(zi.Size()))
+			}
 			paths = append(paths, zipPath)
 			sizes = append(sizes, zi.Size())
 			continue
@@ -83,7 +87,9 @@ func Upload(files []string, backend BaseBackend) error {
 			return err
 		}
 		transferConfig.CryptoKey = normalized
-		fmt.Fprintf(os.Stderr, "key: %s\n", displayKey)
+		if !QuietMode {
+			fmt.Fprintf(os.Stderr, "key: %s\n", displayKey)
+		}
 		for i := range sizes {
 			sizes[i] = crypto.CalcEncryptSize(sizes[i])
 		}

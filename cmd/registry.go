@@ -37,11 +37,11 @@ func (b BackendInfo) MaxBytes() int64 {
 	return n
 }
 
-// backendsFitting returns backend names whose limit can hold size bytes.
+// backendsFitting returns backend names whose limit can hold size bytes (ok only).
 func backendsFitting(size int64) []string {
 	var out []string
 	for _, b := range backends {
-		if b.Status == "down" {
+		if b.Status != "ok" {
 			continue
 		}
 		lim := b.MaxBytes()

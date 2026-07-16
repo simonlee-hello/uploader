@@ -2,7 +2,6 @@ package fichier
 
 import (
 	"bytes"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"uploader/apis"
+	"uploader/apis/methods"
 	"uploader/utils"
 )
 
@@ -62,10 +62,10 @@ func (b *fichier) PostUpload(string, int64) (string, error) {
 	if b.resp != "" {
 		fmt.Println(b.resp)
 	}
-	if b.pwd != "" {
+	if b.pwd != "" && !apis.QuietMode {
 		fmt.Fprintf(os.Stderr, "password: %s\n", b.pwd)
 	}
-	if b.remove != "" {
+	if b.remove != "" && !apis.QuietMode {
 		fmt.Fprintf(os.Stderr, "remove: %s\n", b.remove)
 	}
 	return b.resp, nil
@@ -75,10 +75,7 @@ func (b fichier) newMultipartUpload(config uploadConfig) ([]byte, error) {
 	if config.debug {
 		log.Printf("start upload")
 	}
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Transport: tr}
+	client := methods.NewClient(0)
 
 	byteBuf := &bytes.Buffer{}
 	writer := multipart.NewWriter(byteBuf)
@@ -205,11 +202,7 @@ func getUploadURL(domain string) (string, error) {
 	req.Header.Set("User-Agent", apis.DefaultUA)
 
 	// 发送请求
-	fr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := http.Client{Transport: fr}
-	//resp, err := http.DefaultClient.Do(req)
+	client := methods.NewClient(0)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
