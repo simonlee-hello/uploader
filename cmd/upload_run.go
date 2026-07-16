@@ -8,9 +8,6 @@ import (
 	"uploader/apis"
 )
 
-// autoBackendOrder is the preferred failover sequence (ok backends only).
-var autoBackendOrder = []string{"temp", "lit", "gof", "gg", "fic", "tmpf", "cnet", "wss"}
-
 func backendAllowed(info *BackendInfo, force bool) error {
 	if info == nil {
 		return fmt.Errorf("unknown backend")
@@ -26,39 +23,6 @@ func backendAllowed(info *BackendInfo, force bool) error {
 		}
 	}
 	return nil
-}
-
-func buildAutoCandidates(primary string, maxSize int64, force bool) []*BackendInfo {
-	seen := map[string]bool{}
-	var out []*BackendInfo
-	add := func(name string) {
-		if seen[name] {
-			return
-		}
-		info := findBackend(name)
-		if info == nil {
-			return
-		}
-		if info.Status == "down" && !force {
-			return
-		}
-		if info.Status == "flaky" && !force {
-			return
-		}
-		lim := info.MaxBytes()
-		if maxSize > 0 && lim > 0 && maxSize > lim {
-			return
-		}
-		seen[name] = true
-		out = append(out, info)
-	}
-	if primary != "" {
-		add(primary)
-	}
-	for _, name := range autoBackendOrder {
-		add(name)
-	}
-	return out
 }
 
 func setupUploadFor(info *BackendInfo) {
@@ -99,8 +63,11 @@ func uploadWithOptions(files []string, primary string, auto bool, force bool) er
 
 	var candidates []*BackendInfo
 	if auto {
-		candidates = buildAutoCandidates(primary, maxSize, force)
-	} else if primary != "" {
+		candidates, err = probeRankedForUpload(maxSize, force)
+		if err != nil {
+			return err
+		}
+	} else {
 		info := findBackend(primary)
 		if info == nil {
 			return fmt.Errorf("unknown backend %q", primary)
@@ -108,15 +75,9 @@ func uploadWithOptions(files []string, primary string, auto bool, force bool) er
 		if err := backendAllowed(info, force); err != nil {
 			return err
 		}
-		candidates = []*BackendInfo{info}
-	} else {
-		def := resolveDefaultBackend()
-		info := findBackend(def)
-		if info == nil {
-			return fmt.Errorf("unknown default backend %q", def)
-		}
-		if err := backendAllowed(info, force); err != nil {
-			return err
+		lim := info.MaxBytes()
+		if maxSize > 0 && lim > 0 && maxSize > lim {
+			return fmt.Errorf("%s exceeds backend %s limit", primary, info.Name)
 		}
 		candidates = []*BackendInfo{info}
 	}

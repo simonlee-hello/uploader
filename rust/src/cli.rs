@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 
-use crate::config::{self, resolve_default_backend};
+use crate::config::resolve_default_backend;
 use crate::crypto;
 use crate::probe;
 use crate::registry::{self, BackendStatus};
@@ -64,7 +64,7 @@ pub struct Cli {
     #[arg(long = "ftp", global = true)]
     pub ftp: bool,
 
-    /// Try other ok backends on failure
+    /// With -b: still probe+failover (no -b already means auto)
     #[arg(long = "auto", global = true)]
     pub auto: bool,
 
@@ -191,13 +191,13 @@ impl Cli {
         }
 
         let quiet = self.quiet || self.silent;
-        let primary = self
+        // No -b → auto failover. With -b → pin (unless --auto).
+        let pinned = self
             .backend
             .clone()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(resolve_default_backend);
-
-        let auto = self.auto || config::config_auto_enabled();
+            .filter(|s| !s.trim().is_empty());
+        let auto = pinned.is_none() || self.auto;
+        let primary = pinned.unwrap_or_else(resolve_default_backend);
 
         let opts = UploadOptions {
             primary,
@@ -227,21 +227,23 @@ fn print_help() {
         r#"uploader 0.1.0-rust — multi-backend file uploader (Rust rewrite)
 
 Usage:
-  uploader -b <backend> <file...>
+  uploader <file...>                 # auto: probe then upload via fastest fitting backend
+  uploader -b <backend> <file...>    # pin one backend
   uploader backends
   uploader probe [-all] [backend...]
   uploader encrypt|decrypt [options] <file...>
 
 Examples:
+  uploader ./file
+  uploader -q ./mydir
   uploader -b lit ./file
-  uploader -q -auto ./mydir
   uploader -b gof -s ./a ./b
   uploader -b lit -e -k pass ./file
 
 Backends:
 {table}
 Flags:
-  -b, --backend       backend name (default: temp / UPLOADER_BACKEND)
+  -b, --backend       pin backend (omit = auto: probe then upload)
   -e, --encrypt       encrypt before upload
   -k, --key           encryption key
   -s, --single        multi-file one link (gof/wss)
@@ -249,7 +251,7 @@ Flags:
   --ftp               1fichier FTP mode
   -q, --quiet         headless: links on stdout only
   -r, --recursive     upload each file under a directory
-  --auto              try other ok backends on failure
+  --auto              with -b: still probe+failover
   --force             allow flaky/down backends
   --http-timeout SEC  HTTP timeout (default 600)
 

@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 pub struct UserConfig {
     pub backend: Option<String>,
-    pub auto: bool,
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -33,10 +32,7 @@ fn dirs_home() -> Option<PathBuf> {
 }
 
 pub fn load_user_config() -> UserConfig {
-    let mut cfg = UserConfig {
-        backend: None,
-        auto: false,
-    };
+    let mut cfg = UserConfig { backend: None };
     let Some(dir) = config_dir() else {
         return cfg;
     };
@@ -51,13 +47,8 @@ pub fn load_user_config() -> UserConfig {
         let Some((k, v)) = line.split_once('=') else {
             continue;
         };
-        match k.trim() {
-            "backend" => cfg.backend = Some(v.trim().to_string()),
-            "auto" => {
-                let v = v.trim();
-                cfg.auto = v.eq_ignore_ascii_case("true") || v == "1";
-            }
-            _ => {}
+        if k.trim() == "backend" {
+            cfg.backend = Some(v.trim().to_string());
         }
     }
     cfg
@@ -102,8 +93,4 @@ pub fn save_last_backend(name: &str) {
     };
     let _ = fs::create_dir_all(&dir);
     let _ = fs::write(dir.join("last-backend"), format!("{name}\n"));
-}
-
-pub fn config_auto_enabled() -> bool {
-    load_user_config().auto
 }

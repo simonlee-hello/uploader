@@ -9,14 +9,15 @@ use tokio::time::timeout;
 use crate::backends::{self, CreateOpts, UploadItem};
 use crate::http;
 use crate::registry::{self, BackendInfo, BackendStatus};
+use crate::util::size::format_byte_size;
 
-struct ProbeResult {
-    name: String,
-    ok: bool,
-    latency: Duration,
-    link: String,
-    err: String,
-    skipped: bool,
+pub struct ProbeResult {
+    pub name: String,
+    pub ok: bool,
+    pub latency: Duration,
+    pub link: String,
+    pub err: String,
+    pub skipped: bool,
 }
 
 pub async fn run(backends: Vec<String>, all: bool, parallel: usize, timeout_secs: f64) -> Result<()> {
@@ -28,77 +29,15 @@ pub async fn run(backends: Vec<String>, all: bool, parallel: usize, timeout_secs
         bail!("no backends");
     }
 
-    let probe_path = std::env::temp_dir().join(format!(
-        "uploader-probe-{}.txt",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    fs::write(&probe_path, b"uploader probe\n")?;
-    let probe_path_cleanup = probe_path.clone();
-
     eprintln!(
         "probing {} backend(s), parallel={parallel} timeout={:.0}s\n",
         targets.len(),
         timeout_secs
     );
 
-    let client = http::build_client(timeout_secs.ceil() as u64 + 30)?;
-    let sem = Arc::new(Semaphore::new(parallel));
-    let print_mu = Arc::new(Mutex::new(()));
-    let mut handles = Vec::new();
-
-    for info in targets {
-        let sem = sem.clone();
-        let client = client.clone();
-        let path = probe_path.clone();
-        let print_mu = print_mu.clone();
-        handles.push(tokio::spawn(async move {
-            let _permit = sem.acquire().await.ok();
-            let res = probe_one(&client, info, &path, timeout_dur).await;
-            let status = if res.skipped {
-                "SKIP"
-            } else if res.ok {
-                "OK"
-            } else {
-                "FAIL"
-            };
-            let extra = if res.ok {
-                short_link(&res.link)
-            } else {
-                res.err.clone()
-            };
-            let _g = print_mu.lock().await;
-            println!(
-                "{status:<4} {:<6} {:>8}  {extra}",
-                res.name,
-                format_latency(res.latency)
-            );
-            res
-        }));
-    }
-
-    let mut results = Vec::new();
-    for h in handles {
-        if let Ok(r) = h.await {
-            results.push(r);
-        }
-    }
-    let _ = fs::remove_file(probe_path_cleanup);
-
-    results.sort_by(|a, b| {
-        b.ok
-            .cmp(&a.ok)
-            .then_with(|| (!a.skipped).cmp(&(!b.skipped)))
-            .then_with(|| {
-                if a.ok && b.ok {
-                    a.latency.cmp(&b.latency)
-                } else {
-                    a.name.cmp(&b.name)
-                }
-            })
-    });
+    let results = probe_all(&targets, parallel, timeout_dur, true).await?;
+    let mut results = results;
+    sort_probe_results(&mut results);
 
     eprintln!("\nsummary (prefer top successes):");
     println!("{:<6} {:<6} {:>8}  DETAIL", "NAME", "RESULT", "TIME");
@@ -138,6 +77,47 @@ pub async fn run(backends: Vec<String>, all: bool, parallel: usize, timeout_secs
     bail!("probe: no working backend");
 }
 
+/// Probe size-fitting backends; return names sorted by latency (fastest first).
+pub async fn rank_for_upload(max_size: u64, force: bool, quiet: bool) -> Result<Vec<String>> {
+    let targets = select_targets_for_size(max_size, force);
+    if targets.is_empty() {
+        bail!("no backend available for this file size");
+    }
+    if !quiet {
+        let size_label = if max_size == 0 {
+            "?".into()
+        } else {
+            format_byte_size(max_size)
+        };
+        eprintln!(
+            "auto: probing {} backend(s) (size ≤ {size_label})...",
+            targets.len()
+        );
+    }
+
+    let results = probe_all(&targets, 3, Duration::from_secs(45), !quiet).await?;
+    let mut results = results;
+    sort_probe_results(&mut results);
+
+    let ranked: Vec<String> = results
+        .iter()
+        .filter(|r| r.ok)
+        .map(|r| r.name.clone())
+        .collect();
+    if ranked.is_empty() {
+        bail!("auto: no working backend (probe all failed)");
+    }
+    if !quiet {
+        let lat = results
+            .iter()
+            .find(|r| r.ok && r.name == ranked[0])
+            .map(|r| r.latency)
+            .unwrap_or_default();
+        eprintln!("auto: using {} ({})", ranked[0], format_latency(lat));
+    }
+    Ok(ranked)
+}
+
 fn select_targets(names: &[String], all: bool) -> Vec<&'static BackendInfo> {
     if !names.is_empty() {
         let mut out = Vec::new();
@@ -153,6 +133,103 @@ fn select_targets(names: &[String], all: bool) -> Vec<&'static BackendInfo> {
         .iter()
         .filter(|b| all || b.status == BackendStatus::Ok)
         .collect()
+}
+
+fn select_targets_for_size(max_size: u64, force: bool) -> Vec<&'static BackendInfo> {
+    registry::BACKENDS
+        .iter()
+        .filter(|b| {
+            if b.status == BackendStatus::Down && !force {
+                return false;
+            }
+            if b.status == BackendStatus::Flaky && !force {
+                return false;
+            }
+            if b.status != BackendStatus::Ok && !force {
+                return false;
+            }
+            let lim = b.max_bytes();
+            !(max_size > 0 && lim > 0 && max_size > lim)
+        })
+        .collect()
+}
+
+async fn probe_all(
+    targets: &[&'static BackendInfo],
+    parallel: usize,
+    timeout_dur: Duration,
+    print_live: bool,
+) -> Result<Vec<ProbeResult>> {
+    let probe_path = std::env::temp_dir().join(format!(
+        "uploader-probe-{}.txt",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    fs::write(&probe_path, b"uploader probe\n")?;
+    let probe_path_cleanup = probe_path.clone();
+
+    let client = http::build_client(timeout_dur.as_secs() + 30)?;
+    let sem = Arc::new(Semaphore::new(parallel.max(1)));
+    let print_mu = Arc::new(Mutex::new(()));
+    let mut handles = Vec::new();
+
+    for info in targets.iter().copied() {
+        let sem = sem.clone();
+        let client = client.clone();
+        let path = probe_path.clone();
+        let print_mu = print_mu.clone();
+        handles.push(tokio::spawn(async move {
+            let _permit = sem.acquire().await.ok();
+            let res = probe_one(&client, info, &path, timeout_dur).await;
+            if print_live {
+                let status = if res.skipped {
+                    "SKIP"
+                } else if res.ok {
+                    "OK"
+                } else {
+                    "FAIL"
+                };
+                let extra = if res.ok {
+                    short_link(&res.link)
+                } else {
+                    res.err.clone()
+                };
+                let _g = print_mu.lock().await;
+                eprintln!(
+                    "{status:<4} {:<6} {:>8}  {extra}",
+                    res.name,
+                    format_latency(res.latency)
+                );
+            }
+            res
+        }));
+    }
+
+    let mut results = Vec::new();
+    for h in handles {
+        if let Ok(r) = h.await {
+            results.push(r);
+        }
+    }
+    let _ = fs::remove_file(probe_path_cleanup);
+    Ok(results)
+}
+
+fn sort_probe_results(results: &mut [ProbeResult]) {
+    results.sort_by(|a, b| {
+        b.ok
+            .cmp(&a.ok)
+            .then_with(|| (!a.skipped).cmp(&(!b.skipped)))
+            .then_with(|| {
+                if a.ok && b.ok {
+                    a.latency.cmp(&b.latency)
+                } else {
+                    a.name.cmp(&b.name)
+                }
+            })
+    });
 }
 
 async fn probe_one(
