@@ -4,3 +4,7 @@
 **.js
 transfer
 /bin/
+/uploader
+.reg-report.txt
+.reg-rust-report.txt
+*.encrypt
