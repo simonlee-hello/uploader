@@ -17,10 +17,17 @@ var (
 	NoBar     bool
 )
 
+// RegisterFlags binds encrypt/decrypt flags.
+// Aliases: -k/-key/-encrypt-key, -o/-output/-out, -f/-force
 func RegisterFlags(fs *flag.FlagSet) {
 	fs.StringVar(&Prefix, "output", ".", "output file or directory")
+	fs.StringVar(&Prefix, "o", ".", "output file or directory")
+	fs.StringVar(&Prefix, "out", ".", "output file or directory")
 	fs.StringVar(&Key, "key", "", "password")
+	fs.StringVar(&Key, "k", "", "password")
+	fs.StringVar(&Key, "encrypt-key", "", "password")
 	fs.BoolVar(&ForceMode, "force", false, "overwrite existing output")
+	fs.BoolVar(&ForceMode, "f", false, "overwrite existing output")
 	fs.BoolVar(&NoBar, "no-progress", false, "disable progress")
 }
 
@@ -55,7 +62,7 @@ func Encrypt(file string) error {
 		return err
 	}
 	if utils.IsExist(dest) && !strings.HasPrefix(dest, "/dev") && !ForceMode {
-		return fmt.Errorf("%s exists (use -force)", dest)
+		return fmt.Errorf("output exists: %s (use -force or -o PATH)", dest)
 	}
 
 	info, err := os.Stat(path)
@@ -110,7 +117,7 @@ func Decrypt(file string) error {
 		return err
 	}
 	if utils.IsExist(dest) && !strings.HasPrefix(dest, "/dev") && !ForceMode {
-		return fmt.Errorf("%s exists (use -force)", dest)
+		return fmt.Errorf("output exists: %s (use -force or -o PATH)", dest)
 	}
 
 	src, err := os.Open(path)

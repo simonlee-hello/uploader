@@ -34,12 +34,30 @@ func TestStreamRoundTrip(t *testing.T) {
 	if err := StreamEncrypt(bytes.NewReader(raw), &buf, key, 0); err != nil {
 		t.Fatal(err)
 	}
+	if int64(buf.Len()) != CalcEncryptSize(int64(len(raw))) {
+		t.Fatalf("encrypt size mismatch: got %d want %d", buf.Len(), CalcEncryptSize(int64(len(raw))))
+	}
 	var out bytes.Buffer
 	if err := StreamDecrypt(bytes.NewReader(buf.Bytes()), &out, key, 0); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(out.Bytes(), raw) {
 		t.Fatal("stream round-trip failed")
+	}
+}
+
+func TestCalcEncryptSize(t *testing.T) {
+	key := string(bytes.Repeat([]byte("k"), 32))
+	for _, n := range []int{0, 1, 15, 16, 17, 436, 1000} {
+		raw := utils.GenRandBytes(n)
+		var buf bytes.Buffer
+		if err := StreamEncrypt(bytes.NewReader(raw), &buf, key, 0); err != nil {
+			t.Fatal(err)
+		}
+		want := CalcEncryptSize(int64(n))
+		if int64(buf.Len()) != want {
+			t.Fatalf("n=%d: got %d want %d", n, buf.Len(), want)
+		}
 	}
 }
 

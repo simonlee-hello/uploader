@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"strings"
 
 	"uploader/apis"
 	fichier "uploader/apis/public/1fichier"
@@ -74,7 +76,10 @@ func newUploadFlagSet(name string) *flag.FlagSet {
 	fs.BoolVar(&flagKeep, "keep", false, "wait for enter on exit")
 	fs.BoolVar(&flagHelp, "h", false, "help")
 	fs.BoolVar(&flagHelp, "help", false, "help")
+	fs.BoolVar(&flagEncrypt, "e", false, "encrypt before upload")
 	fs.BoolVar(&flagEncrypt, "encrypt", false, "encrypt before upload")
+	fs.StringVar(&flagEncryptKey, "k", "", "encryption key")
+	fs.StringVar(&flagEncryptKey, "key", "", "encryption key")
 	fs.StringVar(&flagEncryptKey, "encrypt-key", "", "encryption key")
 	fs.BoolVar(&flagNoProgress, "no-progress", false, "disable progress")
 	fs.BoolVar(&flagSilent, "silent", false, "print link only")
@@ -136,13 +141,29 @@ func applyBackendOptions(name string) {
 
 func runUpload(args []string) {
 	args = reorderArgs(args, map[string]bool{
-		"-b": true, "-backend": true, "-encrypt-key": true,
+		"-b": true, "-backend": true,
+		"-k": true, "-key": true, "-encrypt-key": true,
 		"-o": true, "-result": true, "-password": true, "-cookie": true,
 		"-block": true, "-timeout": true, "-parallel": true,
 		"-api-key": true, "-email": true,
 	})
 	fs := newUploadFlagSet("uploader")
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	if err := fs.Parse(args); err != nil {
+		msg := err.Error()
+		fmt.Fprintf(os.Stderr, "error: %s\n", msg)
+		if strings.HasPrefix(msg, "flag provided but not defined: -") {
+			unknown := strings.TrimPrefix(msg, "flag provided but not defined: -")
+			if sug := suggestFlag(unknown, []string{
+				"b", "backend", "e", "encrypt", "k", "key", "encrypt-key",
+				"o", "result", "silent", "no-progress", "v", "verbose",
+				"password", "s", "single", "ftp", "h", "help",
+			}); sug != "" {
+				fmt.Fprintf(os.Stderr, "did you mean -%s?\n", sug)
+			}
+		}
+		fmt.Fprintln(os.Stderr, "usage: uploader -b <backend> [-e] [-k pass] <file...>")
 		os.Exit(2)
 	}
 	if flagHelp {
@@ -181,26 +202,41 @@ func runBackends() {
 }
 
 func runCrypto(encrypt bool, args []string) {
+	args = reorderArgs(args, map[string]bool{
+		"-key": true, "-k": true, "-encrypt-key": true,
+		"-output": true, "-o": true, "-out": true,
+	})
+
 	fs := flag.NewFlagSet("crypto", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	crypto.RegisterFlags(fs)
 	fs.BoolVar(&flagKeep, "keep", false, "wait for enter on exit")
 	fs.BoolVar(&flagHelp, "h", false, "help")
 	fs.BoolVar(&flagHelp, "help", false, "help")
+
 	if err := fs.Parse(args); err != nil {
+		msg := err.Error()
+		fmt.Fprintf(os.Stderr, "error: %s\n", msg)
+		if strings.HasPrefix(msg, "flag provided but not defined: -") {
+			unknown := strings.TrimPrefix(msg, "flag provided but not defined: -")
+			if sug := suggestFlag(unknown, []string{
+				"k", "key", "encrypt-key", "o", "output", "out", "f", "force", "h", "help", "keep", "no-progress",
+			}); sug != "" {
+				fmt.Fprintf(os.Stderr, "did you mean -%s?\n", sug)
+			}
+		}
+		printCryptoUsage(encrypt)
 		os.Exit(2)
 	}
 	if flagHelp {
-		if encrypt {
-			fmt.Fprintln(os.Stderr, "usage: uploader encrypt [-key pass] [-output path] <file>")
-		} else {
-			fmt.Fprintln(os.Stderr, "usage: uploader decrypt -key pass [-output path] <file>")
-		}
+		printCryptoUsage(encrypt)
 		return
 	}
 	files := uploadWalker(fs.Args())
 	if len(files) == 0 {
 		fmt.Fprintln(os.Stderr, "no file")
+		printCryptoUsage(encrypt)
 		os.Exit(1)
 	}
 	for _, f := range files {
@@ -212,8 +248,18 @@ func runCrypto(encrypt bool, args []string) {
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	}
+}
+
+func printCryptoUsage(encrypt bool) {
+	if encrypt {
+		fmt.Fprintln(os.Stderr, "usage: uploader encrypt [-k pass] [-o path] [-force] <file>")
+	} else {
+		fmt.Fprintln(os.Stderr, "usage: uploader decrypt -k pass [-o path] [-force] <file>")
+	}
+	fmt.Fprintln(os.Stderr, "flags: -k/-key/-encrypt-key  -o/-output/-out  -f/-force")
 }
 
 func printHelp() {
@@ -227,9 +273,12 @@ Usage:
 
 Examples:
   uploader -b temp ./video.mkv
+  uploader -b lit -e -k pass ./file
   uploader -b gof -s ./a.bin ./b.bin
   uploader probe
   uploader probe temp lit gof -timeout 20
+  uploader encrypt -k pass ./file
+  uploader decrypt -k pass -o out.bin ./file.encrypt
 
 Backends:
 `)
@@ -237,15 +286,20 @@ Backends:
 	fmt.Print(`
 Flags:
   -b, -backend      backend name
-  -encrypt          encrypt stream before upload
-  -encrypt-key      encryption key
+  -e, -encrypt      encrypt stream before upload
+  -k, -key, -encrypt-key  encryption key (upload)
   -silent           print link only
   -no-progress      disable progress
-  -o, -result       append links to file
+  -o, -result       append links to file (upload)
   -v                verbose
   -password         share password (wss/fic)
   -s, -single       one link for many files (gof/wss)
   -ftp              1fichier FTP mode
+
+Encrypt/decrypt:
+  -k, -key, -encrypt-key  password
+  -o, -output, -out output path
+  -f, -force        overwrite output
 
 Probe:
   -all              include disabled backends

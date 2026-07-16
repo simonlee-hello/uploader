@@ -29,3 +29,56 @@ func reorderArgs(args []string, valueFlags map[string]bool) []string {
 	}
 	return append(flags, rest...)
 }
+
+// suggestFlag returns the closest known flag name for a typo, or "".
+func suggestFlag(got string, known []string) string {
+	got = strings.TrimLeft(got, "-")
+	best, bestDist := "", 3 // only suggest if edit distance <= 2
+	for _, k := range known {
+		d := editDistance(got, k)
+		if d < bestDist {
+			bestDist = d
+			best = k
+		}
+	}
+	return best
+}
+
+func editDistance(a, b string) int {
+	if a == b {
+		return 0
+	}
+	la, lb := len(a), len(b)
+	if la == 0 {
+		return lb
+	}
+	if lb == 0 {
+		return la
+	}
+	prev := make([]int, lb+1)
+	cur := make([]int, lb+1)
+	for j := 0; j <= lb; j++ {
+		prev[j] = j
+	}
+	for i := 1; i <= la; i++ {
+		cur[0] = i
+		for j := 1; j <= lb; j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			ins := cur[j-1] + 1
+			del := prev[j] + 1
+			sub := prev[j-1] + cost
+			cur[j] = ins
+			if del < cur[j] {
+				cur[j] = del
+			}
+			if sub < cur[j] {
+				cur[j] = sub
+			}
+		}
+		prev, cur = cur, prev
+	}
+	return prev[lb]
+}

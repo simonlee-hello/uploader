@@ -115,10 +115,19 @@ func upload(file string, size int64, backend BaseBackend) (string, error) {
 	}
 
 	name := info.Name()
+	// Always derive encrypt size from plaintext file length. Callers may already
+	// pass CalcEncryptSize()'d values into size (for InitUpload); recomputing
+	// from that would inflate Content-Length by magic+IV+pad (~32 bytes).
 	uploadSize := size
 	if transferConfig.CryptoMode {
-		uploadSize = crypto.CalcEncryptSize(size)
-		name = name + ".encrypt"
+		uploadSize = crypto.CalcEncryptSize(info.Size())
+		// Keep a normal-looking name: hosts like tmpfiles reject ".encrypt".
+		// No extension → .bin so the upload still looks like a regular file.
+		if filepath.Ext(name) == "" {
+			name = name + ".bin"
+		}
+	} else if uploadSize <= 0 {
+		uploadSize = info.Size()
 	}
 
 	if err = backend.PreUpload(name, uploadSize); err != nil {
