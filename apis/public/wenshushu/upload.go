@@ -262,7 +262,10 @@ func (b wssTransfer) completeUpload(config sendConfigBlock) (string, error) {
 	if body.Message != "success" {
 		return "", fmt.Errorf("status != success")
 	}
-	if !apis.QuietMode {
+	if body.Data.PublicURL == "" {
+		return "", fmt.Errorf("empty public url")
+	}
+	if !apis.QuietMode && body.Data.ManageURL != "" {
 		fmt.Fprintf(os.Stderr, "manage: %s\n", body.Data.ManageURL)
 	}
 	fmt.Println(body.Data.PublicURL)
@@ -324,12 +327,13 @@ func (b wssTransfer) getSendConfig(totalSize int64, totalCount int) (*sendConfig
 		return nil, err
 	}
 	addHeaders(req)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := methods.NewClient(time.Duration(b.Config.Interval) * time.Second).Do(req)
 	if err != nil {
 		return nil, err
 	}
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		_ = resp.Body.Close()
 		return nil, err
 	}
 	_ = resp.Body.Close()
@@ -348,20 +352,23 @@ func (b wssTransfer) getSendConfig(totalSize int64, totalCount int) (*sendConfig
 	if apis.DebugMode {
 		log.Println("step 2/3 addSend")
 	}
+	// encoding/json sorts map keys; a-code is MD5 over exact body bytes.
 	data, _ := json.Marshal(map[string]any{
-		"sender":            "",
-		"remark":            "",
-		"isextension":       false,
-		"trafficStatus":     0,
-		"notPreview":        false,
-		"downPreCountLimit": 0,
-		"notDownload":       false,
-		"notSaveTo":         false,
-		"pwd":               b.Config.PassCode,
-		"expire":            "1",
-		"recvs":             []string{"social", "public"},
-		"file_size":         totalSize,
-		"file_count":        totalCount,
+		"downPreCountLimit":  0,
+		"expire":             "1",
+		"fileDisplay":        0,
+		"file_count":         totalCount,
+		"file_size":          totalSize,
+		"isextension":        false,
+		"notDownload":        false,
+		"notPreview":         false,
+		"notSaveTo":          false,
+		"pwd":                b.Config.PassCode,
+		"recvs":              []string{"social", "public"},
+		"remark":             "",
+		"sender":             "",
+		"task_traffic_limit": "",
+		"trafficStatus":      0,
 	})
 
 	encData, err := b.encrypt(respDat.Data.Time, ticket, data)
@@ -428,6 +435,9 @@ func newRequest(link string, postBody string, config requestConfig) (*sendConfig
 		return newRequest(link, postBody, config)
 	}
 	config.modifier(req)
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if config.debug {
 		log.Printf("%+v", req.Header)
 	}
@@ -476,23 +486,24 @@ func newRequest(link string, postBody string, config requestConfig) (*sendConfig
 func addToken(added ...string) func(req *http.Request) {
 	return func(req *http.Request) {
 		addHeaders(req)
-		req.Header.Set("x-token", added[0])
+		// Preserve exact header names; edge treats A-code case-sensitively.
+		req.Header["X-TOKEN"] = []string{added[0]}
 		if len(added) >= 2 {
-			req.Header.Set("req-time", added[1])
+			req.Header["Req-Time"] = []string{added[1]}
 		}
 		if len(added) >= 3 {
-			req.Header.Set("a-code", added[2])
-			req.Header.Set("Content-Type", "application/json")
+			req.Header["A-code"] = []string{added[2]}
 		}
+		req.Header.Set("Content-Type", "application/json")
 	}
 }
 
 func addHeaders(req *http.Request) {
+	// Keep headers minimal — `authority` triggers user-agent error:-3.
 	req.Header.Set("Prod", "com.wenshushu.web.pc")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Referer", "https://www.wenshushu.cn/")
-	req.Header.Set("authority", "www.wenshushu.cn")
-	req.Header.Set("accept-language", "en-US,en;q=0.9")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/11.1.2 Safari/605.1.15")
+	req.Header.Set("Accept-Language", "zh-CN, zh-Hans-CN;q=0.9")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 	req.Header.Set("Origin", "https://www.wenshushu.cn")
 }

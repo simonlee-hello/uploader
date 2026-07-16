@@ -1,0 +1,42 @@
+[package]
+name = "uploader"
+version = "0.1.0"
+edition = "2021"
+description = "Multi-backend file upload CLI (Rust rewrite)"
+license = "MIT"
+
+[[bin]]
+name = "uploader"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "multipart", "stream", "json", "socks"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "fs", "io-util", "time"] }
+tokio-util = { version = "0.7", default-features = false, features = ["codec", "io"] }
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+aes = "0.8"
+des = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+cipher = { version = "0.4", features = ["block-padding", "alloc"] }
+md-5 = "0.10"
+base64 = { version = "0.22", default-features = false, features = ["std"] }
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+walkdir = "2"
+tempfile = "3"
+regex = "1"
+hex = "0.4"
+futures-util = { version = "0.3", default-features = false }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

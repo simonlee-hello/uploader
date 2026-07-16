@@ -3,8 +3,20 @@ BUILD_ENV := CGO_ENABLED=0
 LDFLAGS-Linux := -ldflags '-s -w -extldflags "-static"' -gcflags="all=-trimpath=${PWD};${GOPATH};${GOROOT}" -asmflags="all=-trimpath=${PWD};${GOPATH};${GOROOT}"
 LDFLAGS-Win := -ldflags '-s -w -extldflags "-static"' -gcflags="all=-trimpath=${PWD};${GOPATH};${GOROOT}" -asmflags="all=-trimpath=${PWD};${GOPATH};${GOROOT}"
 
-.PHONY: all setup build-linux build-osx build-windows
+.PHONY: all setup build-linux build-osx build-windows build-rust build-rust-cross build-freebsd reg-rust
 all: setup build-linux build-freebsd build-osx build-windows
+
+build-rust:
+	cd rust && CARGO_TARGET_DIR=$$PWD/target cargo build --release
+	mkdir -p bin/osx bin/linux bin/windows
+	cp rust/target/release/uploader bin/osx/uploader-rust-darwin-$$(uname -m) 2>/dev/null || true
+	@ls -lh rust/target/release/uploader
+
+build-rust-cross:
+	bash scripts/cross-rust.sh
+
+reg-rust:
+	bash scripts/reg-rust.sh
 
 Name := uploader
 
