@@ -1,31 +1,89 @@
-archives:
-  -
-    files:
-      - none*
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
 
-    format_overrides:
-      - goos: windows
-        format: zip
+project_name: uploader
 
 builds:
-  -
-    ldflags:
-      - -s -w -extldflags "-static" -X main.build={{.FullCommit}}
-
+  - id: uploader
+    main: .
+    binary: uploader
     env:
       - CGO_ENABLED=0
-
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
     goos:
       - linux
       - windows
       - darwin
-
+      - freebsd
     goarch:
-      - arm
-      - 386
       - amd64
       - arm64
+      - "386"
+      - arm
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm
+      - goos: windows
+        goarch: arm
+      - goos: freebsd
+        goarch: arm
+      - goos: freebsd
+        goarch: arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Tag }}_
+      {{- .Os }}_
+      {{- if eq .Arch "amd64" }}amd64
+      {{- else if eq .Arch "386" }}x86
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))?!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\(.+\))?!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
 
 release:
+  draft: false
   prerelease: auto
-  draft: true
+  name_template: "{{.Tag}}"
+  footer: |
+    ---
+    **安装示例**
+
+    ```bash
+    # Linux amd64
+    curl -fsSL -o uploader.tar.gz https://github.com/simonlee-hello/uploader/releases/download/{{.Tag}}/uploader_{{.Tag}}_linux_amd64.tar.gz
+    tar xf uploader.tar.gz && chmod +x uploader
+    ```

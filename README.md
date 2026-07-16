@@ -34,6 +34,15 @@ make build-rust
 make build-rust-cross
 ```
 
+## Release
+
+推送 `v*` 标签会触发 GitHub Actions，用 GoReleaser 自动构建多平台二进制并创建 Release（含 changelog）：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## Quick start
 
 ```bash
