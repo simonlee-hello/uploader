@@ -14,9 +14,12 @@ type MultiPartUploadConfig struct {
 }
 
 type TransferConfig struct {
-	Parallel   int
-	DebugMode  *bool
-	NoBarMode  bool
-	CryptoMode bool
-	CryptoKey  string
+	Parallel      int
+	DebugMode     *bool
+	NoBarMode     bool
+	CryptoMode    bool
+	CryptoKey     string
+	MaxBytes      int64  // 0 = unlimited
+	BackendName   string // for size-check messages
+	RecursiveDirs bool   // true: upload each file under dir; false: zip dir then upload
 }

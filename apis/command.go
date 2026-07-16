@@ -9,6 +9,8 @@ var (
 	DebugMode      bool
 	MuteMode       bool
 	Output         string
+	// SizeHint optionally returns alternative backends when size exceeds limit.
+	SizeHint func(size int64) string
 )
 
 func TransferConfig() *methods.TransferConfig {

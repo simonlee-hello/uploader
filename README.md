@@ -12,6 +12,8 @@ go build -trimpath -ldflags '-s -w' -o uploader .
 
 ```bash
 uploader -b temp ./file.bin
+uploader -b lit ./mydir              # zip directory, then upload
+uploader -b lit -r ./mydir           # upload each file under directory
 uploader backends
 uploader probe
 uploader probe temp lit gof -timeout 20

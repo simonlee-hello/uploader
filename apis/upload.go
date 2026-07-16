@@ -6,42 +6,81 @@ import (
 	"os"
 	"path/filepath"
 	"uploader/crypto"
+	"uploader/utils"
 )
 
-func Upload(files []string, backend BaseBackend) {
+func Upload(files []string, backend BaseBackend) error {
 	tmpOut := os.Stdout
 	if MuteMode {
 		transferConfig.NoBarMode = true
 		os.Stdout, _ = os.Open(os.DevNull)
 		defer func() { os.Stdout = tmpOut }()
 	}
+
 	var (
-		sizes []int64
-		paths []string
+		sizes   []int64
+		paths   []string
+		cleanup []string
 	)
+	defer func() {
+		for _, p := range cleanup {
+			_ = os.Remove(p)
+		}
+	}()
+
 	for _, v := range files {
-		err := filepath.Walk(v, func(path string, info os.FileInfo, err error) error {
-			if info.IsDir() {
-				return nil
+		info, err := os.Stat(v)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "stat: %v\n", err)
+			return err
+		}
+		if info.IsDir() && !transferConfig.RecursiveDirs {
+			fmt.Fprintf(os.Stderr, "packing %s ...\n", v)
+			zipPath, err := utils.ZipDirTemp(v)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "pack: %v\n", err)
+				return err
 			}
+			cleanup = append(cleanup, zipPath)
+			zi, err := os.Stat(zipPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "pack: %v\n", err)
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "packed %s (%s)\n", filepath.Base(zipPath), utils.FormatByteSize(zi.Size()))
+			paths = append(paths, zipPath)
+			sizes = append(sizes, zi.Size())
+			continue
+		}
+
+		err = filepath.Walk(v, func(path string, fi os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
+			if fi.IsDir() {
+				return nil
+			}
 			paths = append(paths, path)
-			sizes = append(sizes, info.Size())
+			sizes = append(sizes, fi.Size())
 			return nil
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "walk: %v\n", err)
-			return
+			return err
 		}
+	}
+
+	if len(paths) == 0 {
+		err := fmt.Errorf("no files to upload")
+		fmt.Fprintln(os.Stderr, err)
+		return err
 	}
 
 	if transferConfig.CryptoMode {
 		displayKey, normalized, err := crypto.NormalizeKey(transferConfig.CryptoKey, true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "encrypt: %v\n", err)
-			return
+			return err
 		}
 		transferConfig.CryptoKey = normalized
 		fmt.Fprintf(os.Stderr, "key: %s\n", displayKey)
@@ -50,14 +89,28 @@ func Upload(files []string, backend BaseBackend) {
 		}
 	}
 
+	for i, sz := range sizes {
+		if err := utils.CheckUploadSize(filepath.Base(paths[i]), sz, transferConfig.MaxBytes, transferConfig.BackendName); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			if SizeHint != nil {
+				if hint := SizeHint(sz); hint != "" {
+					fmt.Fprintln(os.Stderr, hint)
+				}
+			}
+			return err
+		}
+	}
+
 	if err := backend.InitUpload(paths, sizes); err != nil {
 		fmt.Fprintf(os.Stderr, "init: %v\n", err)
-		return
+		return err
 	}
+	var uploadErr error
 	for n, file := range paths {
 		resp, err := upload(file, sizes[n], backend)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "upload %s: %v\n", filepath.Base(file), err)
+			uploadErr = err
 		}
 		if resp != "" && MuteMode {
 			fmt.Fprintln(tmpOut, resp)
@@ -75,10 +128,14 @@ func Upload(files []string, backend BaseBackend) {
 	resp, err := backend.FinishUpload(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "finish: %v\n", err)
+		if uploadErr == nil {
+			uploadErr = err
+		}
 	}
 	if resp != "" && MuteMode {
 		fmt.Fprintln(tmpOut, resp)
 	}
+	return uploadErr
 }
 
 func UploadFile(path string, backend BaseBackend) (string, error) {
@@ -90,6 +147,14 @@ func UploadFile(path string, backend BaseBackend) (string, error) {
 	nameSize := size
 	if transferConfig.CryptoMode {
 		nameSize = crypto.CalcEncryptSize(size)
+	}
+	if err := utils.CheckUploadSize(filepath.Base(path), nameSize, transferConfig.MaxBytes, transferConfig.BackendName); err != nil {
+		if SizeHint != nil {
+			if hint := SizeHint(nameSize); hint != "" {
+				return "", fmt.Errorf("%w\n%s", err, hint)
+			}
+		}
+		return "", err
 	}
 	if err := backend.InitUpload([]string{path}, []int64{nameSize}); err != nil {
 		return "", err

@@ -16,6 +16,7 @@ import (
 	"uploader/apis/public/tempsh"
 	tempfiles "uploader/apis/public/tmpfiles"
 	"uploader/apis/public/wenshushu"
+	"uploader/utils"
 )
 
 type BackendInfo struct {
@@ -26,6 +27,29 @@ type BackendInfo struct {
 	Status  string // ok | flaky | down
 	Note    string
 	Backend apis.BaseBackend
+}
+
+func (b BackendInfo) MaxBytes() int64 {
+	n, err := utils.ParseByteSize(b.Limit)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// backendsFitting returns backend names whose limit can hold size bytes.
+func backendsFitting(size int64) []string {
+	var out []string
+	for _, b := range backends {
+		if b.Status == "down" {
+			continue
+		}
+		lim := b.MaxBytes()
+		if lim == 0 || size <= lim {
+			out = append(out, b.Name)
+		}
+	}
+	return out
 }
 
 var backends = []BackendInfo{
@@ -63,13 +87,13 @@ func findBackend(name string) *BackendInfo {
 
 func formatBackendTable() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "  %-6s %-10s %-6s %s\n", "NAME", "LIMIT", "STATUS", "NOTES")
+	fmt.Fprintf(&b, "  %-6s %-10s %-6s %-32s %s\n", "NAME", "LIMIT", "STATUS", "URL", "NOTES")
 	for _, x := range backends {
 		note := x.Note
 		if note == "" {
 			note = "-"
 		}
-		fmt.Fprintf(&b, "  %-6s %-10s %-6s %s\n", x.Name, x.Limit, x.Status, note)
+		fmt.Fprintf(&b, "  %-6s %-10s %-6s %-32s %s\n", x.Name, x.Limit, x.Status, x.Site, note)
 	}
 	return b.String()
 }

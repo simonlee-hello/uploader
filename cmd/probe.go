@@ -228,6 +228,9 @@ func probeUpload(info BackendInfo, file string) (string, error) {
 	cfg.NoBarMode = true
 	cfg.CryptoMode = false
 	cfg.CryptoKey = ""
+	cfg.MaxBytes = info.MaxBytes()
+	cfg.BackendName = info.Name
+	cfg.RecursiveDirs = false
 
 	applyBackendOptions(info.Name)
 	return apis.UploadFile(file, info.Backend)

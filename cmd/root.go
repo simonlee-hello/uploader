@@ -36,6 +36,7 @@ var (
 	flagAPIKey     string
 	flagEmail      string
 	flagFTP        bool
+	flagRecursive  bool
 )
 
 func Execute() {
@@ -97,6 +98,8 @@ func newUploadFlagSet(name string) *flag.FlagSet {
 	fs.StringVar(&flagAPIKey, "api-key", "", "1fichier api key")
 	fs.StringVar(&flagEmail, "email", "", "1fichier notify email")
 	fs.BoolVar(&flagFTP, "ftp", false, "1fichier ftp upload")
+	fs.BoolVar(&flagRecursive, "r", false, "upload each file under directory (no zip)")
+	fs.BoolVar(&flagRecursive, "recursive", false, "upload each file under directory (no zip)")
 	return fs
 }
 
@@ -105,6 +108,7 @@ func applyGlobalConfig() {
 	cfg.CryptoMode = flagEncrypt
 	cfg.CryptoKey = flagEncryptKey
 	cfg.NoBarMode = flagNoProgress || flagSilent
+	cfg.RecursiveDirs = flagRecursive
 	apis.DebugMode = flagVerbose
 	apis.MuteMode = flagSilent
 	apis.Output = flagResult
@@ -158,7 +162,7 @@ func runUpload(args []string) {
 			if sug := suggestFlag(unknown, []string{
 				"b", "backend", "e", "encrypt", "k", "key", "encrypt-key",
 				"o", "result", "silent", "no-progress", "v", "verbose",
-				"password", "s", "single", "ftp", "h", "help",
+				"password", "s", "single", "ftp", "r", "recursive", "h", "help",
 			}); sug != "" {
 				fmt.Fprintf(os.Stderr, "did you mean -%s?\n", sug)
 			}
@@ -194,7 +198,28 @@ func runUpload(args []string) {
 		os.Exit(1)
 	}
 	applyBackendOptions(info.Name)
-	apis.Upload(files, info.Backend)
+	cfg := apis.TransferConfig()
+	cfg.MaxBytes = info.MaxBytes()
+	cfg.BackendName = info.Name
+	apis.SizeHint = func(size int64) string {
+		alts := backendsFitting(size)
+		var filtered []string
+		for _, a := range alts {
+			if a != info.Name {
+				filtered = append(filtered, a)
+			}
+		}
+		if len(filtered) == 0 {
+			return ""
+		}
+		if len(filtered) > 6 {
+			filtered = filtered[:6]
+		}
+		return "try: -b " + strings.Join(filtered, " | -b ")
+	}
+	if err := apis.Upload(files, info.Backend); err != nil {
+		os.Exit(1)
+	}
 }
 
 func runBackends() {
@@ -273,6 +298,8 @@ Usage:
 
 Examples:
   uploader -b temp ./video.mkv
+  uploader -b lit ./mydir          # zip directory then upload
+  uploader -b lit -r ./mydir       # upload each file under mydir
   uploader -b lit -e -k pass ./file
   uploader -b gof -s ./a.bin ./b.bin
   uploader probe
@@ -288,6 +315,7 @@ Flags:
   -b, -backend      backend name
   -e, -encrypt      encrypt stream before upload
   -k, -key, -encrypt-key  encryption key (upload)
+  -r, -recursive    upload each file under a directory (default: zip dir)
   -silent           print link only
   -no-progress      disable progress
   -o, -result       append links to file (upload)
