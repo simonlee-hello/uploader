@@ -124,8 +124,6 @@ pub static BACKENDS: &[BackendInfo] = &[
     },
 ];
 
-pub const AUTO_ORDER: &[&str] = &["temp", "lit", "gof", "gg", "fic", "tmpf", "cnet", "wss"];
-
 pub fn find(name: &str) -> Option<&'static BackendInfo> {
     let n = name.trim().to_ascii_lowercase();
     BACKENDS.iter().find(|b| {

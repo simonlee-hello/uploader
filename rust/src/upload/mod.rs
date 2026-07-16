@@ -9,7 +9,8 @@ use crate::cli::check_backend_allowed;
 use crate::config;
 use crate::crypto::{self};
 use crate::http;
-use crate::registry::{self, BackendStatus, AUTO_ORDER};
+use crate::probe;
+use crate::registry;
 use crate::util::size::{check_upload_size, format_byte_size};
 use crate::util::zip::zip_dir_temp;
 
@@ -83,7 +84,23 @@ pub async fn run(opts: UploadOptions) -> Result<()> {
     }
 
     let max_size = upload_items.iter().map(|i| i.size).max().unwrap_or(0);
-    let candidates = build_candidates(&opts.primary, max_size, opts.auto, opts.force)?;
+    let candidates = if opts.auto {
+        match probe::rank_for_upload(max_size, opts.force, opts.quiet).await {
+            Ok(c) => c,
+            Err(e) => {
+                cleanup_all(&upload_items);
+                return Err(e);
+            }
+        }
+    } else {
+        match build_candidates(&opts.primary, max_size, false, opts.force) {
+            Ok(c) => c,
+            Err(e) => {
+                cleanup_all(&upload_items);
+                return Err(e);
+            }
+        }
+    };
     if candidates.is_empty() {
         cleanup_all(&upload_items);
         bail!("no backend available for this file size");
@@ -237,39 +254,20 @@ fn size_hint(size: u64, current: &str) -> String {
     format!("try: -b {}", alts.join(" | -b "))
 }
 
-fn build_candidates(primary: &str, max_size: u64, auto: bool, force: bool) -> Result<Vec<String>> {
+fn build_candidates(primary: &str, max_size: u64, _auto: bool, force: bool) -> Result<Vec<String>> {
     check_backend_allowed(primary, force)?;
-    let mut out = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-
-    let mut add = |name: &str, ignore_size: bool| {
-        if seen.contains(name) {
-            return;
-        }
-        let Some(info) = registry::find(name) else {
-            return;
-        };
-        if info.status == BackendStatus::Down && !force {
-            return;
-        }
-        if info.status == BackendStatus::Flaky && !force {
-            return;
-        }
-        let lim = info.max_bytes();
-        if !ignore_size && max_size > 0 && lim > 0 && max_size > lim {
-            return;
-        }
-        seen.insert(name.to_string());
-        out.push(info.name.to_string());
+    let Some(info) = registry::find(primary) else {
+        bail!("unknown backend {primary:?}");
     };
-
-    add(primary, true);
-    if auto {
-        for name in AUTO_ORDER {
-            add(name, false);
-        }
+    let lim = info.max_bytes();
+    if max_size > 0 && lim > 0 && max_size > lim {
+        bail!(
+            "{} exceeds backend {} limit",
+            format_byte_size(max_size),
+            info.name
+        );
     }
-    Ok(out)
+    Ok(vec![info.name.to_string()])
 }
 
 fn prepare_files(opts: &UploadOptions) -> Result<Vec<Prepared>> {

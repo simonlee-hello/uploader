@@ -109,7 +109,7 @@ func newUploadFlagSet(name string) *flag.FlagSet {
 	fs.BoolVar(&flagForce, "force", false, "allow flaky/down backends")
 	fs.BoolVar(&flagQuiet, "q", false, "quiet: stdout links only, no stderr info")
 	fs.BoolVar(&flagQuiet, "quiet", false, "quiet: stdout links only, no stderr info")
-	fs.BoolVar(&flagAuto, "auto", false, "try other backends on failure")
+	fs.BoolVar(&flagAuto, "auto", false, "with -b: probe+failover (no -b already means auto)")
 	fs.IntVar(&flagHTTPTimeout, "http-timeout", 600, "HTTP timeout seconds (0=no limit)")
 	return fs
 }
@@ -185,7 +185,7 @@ func runUpload(args []string) {
 				fmt.Fprintf(os.Stderr, "did you mean -%s?\n", sug)
 			}
 		}
-		fmt.Fprintln(os.Stderr, "usage: uploader -b <backend> [-e] [-k pass] <file...>")
+		fmt.Fprintln(os.Stderr, "usage: uploader [-b backend] [-e] [-k pass] <file...>")
 		os.Exit(2)
 	}
 	if flagHelp {
@@ -202,8 +202,9 @@ func runUpload(args []string) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	auto := flagAuto || configAutoEnabled()
+	// No -b → auto failover. With -b → pin that backend (unless -auto).
 	primary := strings.TrimSpace(flagBackend)
+	auto := primary == "" || flagAuto
 	if primary == "" {
 		primary = resolveDefaultBackend()
 	}
@@ -294,15 +295,18 @@ func printHelp() {
 	fmt.Print(`uploader — multi-backend file uploader
 
 Usage:
-  uploader -b <backend> <file...>
+  uploader <file...>                 # auto: probe then upload via fastest fitting backend
+  uploader -b <backend> <file...>    # pin one backend
   uploader backends
   uploader probe [backend...]
   uploader encrypt|decrypt [options] <file...>
 
 Examples:
+  uploader ./video.mkv               # probe + pick fastest
+  uploader -q ./file.bin             # quiet + auto
   uploader -b temp ./video.mkv
-  uploader -b lit ./mydir          # zip directory then upload
-  uploader -b lit -r ./mydir       # upload each file under mydir
+  uploader -b lit ./mydir            # zip directory then upload
+  uploader -b lit -r ./mydir         # upload each file under mydir
   uploader -b lit -e -k pass ./file
   uploader -b gof -s ./a.bin ./b.bin
   uploader probe
@@ -315,12 +319,12 @@ Backends:
 	fmt.Print(formatBackendTable())
 	fmt.Print(`
 Flags:
-  -b, -backend      backend name (default: temp / UPLOADER_BACKEND / config)
+  -b, -backend      pin backend (omit = auto: probe then upload)
   -e, -encrypt      encrypt stream before upload
   -k, -key, -encrypt-key  encryption key (upload)
   -r, -recursive    upload each file under a directory (default: zip dir)
   -q, -quiet        headless: links on stdout only, errors on stderr
-  -auto             try other ok backends on failure
+  -auto             with -b: still probe+failover (omit -b already means auto)
   -force            allow flaky/down backends
   -http-timeout SEC global HTTP timeout (default 600, 0=none)
   -silent           print link only (alias of quiet progress)
@@ -332,9 +336,9 @@ Flags:
   -ftp              1fichier FTP mode
 
 Headless deploy:
-  uploader -q -auto ./file          # quiet + auto failover
-  set UPLOADER_BACKEND=lit          # default backend (Windows/Linux)
-  config: ~/.config/uploader/config  # backend=lit, auto=true
+  uploader -q ./file                # quiet + auto probe
+  set UPLOADER_BACKEND=lit          # preferred when pinning / last-backend seed
+  config: ~/.config/uploader/config # backend=lit
   avoid -keep in scripts (waits for Enter)
 
 Encrypt/decrypt:
@@ -350,7 +354,6 @@ Probe:
 }
 
 func printBackendHint() {
-	fmt.Fprintln(os.Stderr, "missing -b <backend>")
-	fmt.Fprintln(os.Stderr, "example: uploader -b temp ./file")
+	fmt.Fprintln(os.Stderr, "example: uploader ./file  |  uploader -b temp ./file")
 	fmt.Fprintln(os.Stderr, "list: uploader backends | probe: uploader probe")
 }

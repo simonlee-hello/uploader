@@ -8,7 +8,7 @@ Inspired by / based on [Mikubill/transfer](https://github.com/Mikubill/transfer)
 
 ## Features
 
-- **多后端**：temp.sh、litterbox、gofile、文叔叔等；可指定后端，也可 `-auto` 失败自动换路
+- **多后端**：temp.sh、litterbox、gofile、文叔叔等；不传 `-b` 时先 probe 再按延迟择路，传 `-b` 则固定渠道
 - **目录友好**：目录默认先 zip 再传；`-r` 可按文件逐个上传
 - **无头友好**：`-q` 只把链接打到 stdout，方便脚本 / C2 回显
 - **体积克制**：Go 版偏 stdlib，体积约数 MB 级，便于投递
@@ -37,17 +37,17 @@ make build-rust-cross
 ## Quick start
 
 ```bash
+# 自动择路（默认：未传 -b → 先 probe，按延迟选最快且容量够的渠道）
+uploader ./file.bin
+uploader -q ./mydir
+
 # 指定后端上传
 uploader -b temp ./file.bin
 
 # 目录：先压缩再上传
 uploader -b lit ./mydir
 
-# 安静模式 + 自动择路（推荐脚本 / 服务器）
-uploader -q -auto ./file.bin
-uploader -q -auto ./mydir
-
-# 先探测可用后端
+# 仅探测
 uploader backends
 uploader probe
 uploader probe temp lit gof -timeout 20
@@ -66,8 +66,7 @@ set UPLOADER_BACKEND=lit             # Windows cmd
 # Linux:   ~/.config/uploader/config
 # Windows: %APPDATA%\uploader\config
 # 示例:
-#   backend=lit
-#   auto=true
+#   backend=lit          # auto 模式下优先尝试的渠道
 
 # 代理（对所有后端生效）
 export https_proxy=http://127.0.0.1:6152

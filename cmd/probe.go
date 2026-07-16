@@ -54,59 +54,15 @@ func runProbe(args []string) {
 		os.Exit(1)
 	}
 
-	probeFile, err := writeProbeFile()
+	fmt.Fprintf(os.Stderr, "probing %d backend(s), parallel=%d timeout=%.0fs\n\n", len(targets), parallel, timeoutSec)
+
+	results, err := probeAll(targets, parallel, time.Duration(timeoutSec*float64(time.Second)), true)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer os.Remove(probeFile)
 
-	fmt.Fprintf(os.Stderr, "probing %d backend(s), parallel=%d timeout=%.0fs\n\n", len(targets), parallel, timeoutSec)
-
-	results := make([]probeResult, len(targets))
-	sem := make(chan struct{}, parallel)
-	var wg sync.WaitGroup
-	var printMu sync.Mutex
-
-	for i, info := range targets {
-		i, info := i, info
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			results[i] = probeOne(info, probeFile, time.Duration(timeoutSec*float64(time.Second)))
-			status := "FAIL"
-			if results[i].OK {
-				status = "OK"
-			}
-			if results[i].Skipped {
-				status = "SKIP"
-			}
-			extra := results[i].Err
-			if results[i].OK {
-				extra = shortLink(results[i].Link)
-			}
-			printMu.Lock()
-			fmt.Printf("%-4s %-6s %8s  %s\n", status, results[i].Name, formatLatency(results[i].Latency), extra)
-			printMu.Unlock()
-		}()
-	}
-	wg.Wait()
-
-	sort.SliceStable(results, func(i, j int) bool {
-		a, b := results[i], results[j]
-		if a.OK != b.OK {
-			return a.OK
-		}
-		if a.Skipped != b.Skipped {
-			return !a.Skipped
-		}
-		if a.OK && b.OK {
-			return a.Latency < b.Latency
-		}
-		return a.Name < b.Name
-	})
+	sortProbeResults(results)
 
 	fmt.Fprintln(os.Stderr, "\nsummary (prefer top successes):")
 	fmt.Printf("%-6s %-6s %8s  %s\n", "NAME", "RESULT", "TIME", "DETAIL")
@@ -135,6 +91,67 @@ func runProbe(args []string) {
 	os.Exit(1)
 }
 
+// probeRankedForUpload probes size-fitting backends and returns them sorted by latency (fastest first).
+func probeRankedForUpload(maxSize int64, force bool) ([]*BackendInfo, error) {
+	targets := selectProbeTargetsForSize(maxSize, force)
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("no backend available for this file size")
+	}
+
+	quiet := apis.QuietMode
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "auto: probing %d backend(s) (size ≤ %s)...\n", len(targets), formatProbeSize(maxSize))
+	}
+
+	results, err := probeAll(targets, 3, 45*time.Second, !quiet)
+	if err != nil {
+		return nil, err
+	}
+	sortProbeResults(results)
+
+	var ranked []*BackendInfo
+	for _, r := range results {
+		if !r.OK {
+			continue
+		}
+		info := findBackend(r.Name)
+		if info == nil {
+			continue
+		}
+		ranked = append(ranked, info)
+	}
+	if len(ranked) == 0 {
+		return nil, fmt.Errorf("auto: no working backend (probe all failed)")
+	}
+	if !quiet {
+		bestLat := time.Duration(0)
+		for _, r := range results {
+			if r.OK && r.Name == ranked[0].Name {
+				bestLat = r.Latency
+				break
+			}
+		}
+		fmt.Fprintf(os.Stderr, "auto: using %s (%s)\n", ranked[0].Name, formatLatency(bestLat))
+	}
+	return ranked, nil
+}
+
+func formatProbeSize(n int64) string {
+	if n <= 0 {
+		return "?"
+	}
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%dB", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f%cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
 func selectProbeTargets(names []string, all bool) []BackendInfo {
 	if len(names) > 0 {
 		var out []BackendInfo
@@ -156,6 +173,89 @@ func selectProbeTargets(names []string, all bool) []BackendInfo {
 		out = append(out, b)
 	}
 	return out
+}
+
+func selectProbeTargetsForSize(maxSize int64, force bool) []BackendInfo {
+	var out []BackendInfo
+	for _, b := range backends {
+		if b.Status == "down" && !force {
+			continue
+		}
+		if b.Status == "flaky" && !force {
+			continue
+		}
+		if b.Status != "ok" && !force {
+			continue
+		}
+		lim := b.MaxBytes()
+		if maxSize > 0 && lim > 0 && maxSize > lim {
+			continue
+		}
+		out = append(out, b)
+	}
+	return out
+}
+
+func probeAll(targets []BackendInfo, parallel int, timeout time.Duration, printLive bool) ([]probeResult, error) {
+	if parallel < 1 {
+		parallel = 1
+	}
+	probeFile, err := writeProbeFile()
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(probeFile)
+
+	results := make([]probeResult, len(targets))
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+	var printMu sync.Mutex
+
+	for i, info := range targets {
+		i, info := i, info
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			results[i] = probeOne(info, probeFile, timeout)
+			if !printLive {
+				return
+			}
+			status := "FAIL"
+			if results[i].OK {
+				status = "OK"
+			}
+			if results[i].Skipped {
+				status = "SKIP"
+			}
+			extra := results[i].Err
+			if results[i].OK {
+				extra = shortLink(results[i].Link)
+			}
+			printMu.Lock()
+			fmt.Fprintf(os.Stderr, "%-4s %-6s %8s  %s\n", status, results[i].Name, formatLatency(results[i].Latency), extra)
+			printMu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return results, nil
+}
+
+func sortProbeResults(results []probeResult) {
+	sort.SliceStable(results, func(i, j int) bool {
+		a, b := results[i], results[j]
+		if a.OK != b.OK {
+			return a.OK
+		}
+		if a.Skipped != b.Skipped {
+			return !a.Skipped
+		}
+		if a.OK && b.OK {
+			return a.Latency < b.Latency
+		}
+		return a.Name < b.Name
+	})
 }
 
 func writeProbeFile() (string, error) {

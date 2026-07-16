@@ -10,7 +10,6 @@ import (
 
 type userConfig struct {
 	Backend string
-	Auto    bool
 }
 
 func configDir() string {
@@ -55,8 +54,6 @@ func loadUserConfig() userConfig {
 		switch strings.TrimSpace(k) {
 		case "backend":
 			cfg.Backend = strings.TrimSpace(v)
-		case "auto":
-			cfg.Auto = strings.EqualFold(strings.TrimSpace(v), "true") || strings.TrimSpace(v) == "1"
 		}
 	}
 	return cfg
@@ -94,8 +91,4 @@ func saveLastBackend(name string) {
 	}
 	_ = os.MkdirAll(dir, 0755)
 	_ = os.WriteFile(filepath.Join(dir, "last-backend"), []byte(name+"\n"), 0644)
-}
-
-func configAutoEnabled() bool {
-	return loadUserConfig().Auto
 }
