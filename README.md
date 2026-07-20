@@ -146,6 +146,8 @@ _ = backend // 实际成功的短名，如 "temp"
 
 CLI 的 `cmd` 已改为调用同一套 `route` 逻辑，避免两套实现。文叔叔等后端在库路径下会补默认 `BlockSize`/`Parallel`，避免 Config 为零时 panic。
 
+**并发限制**：`Mute` / `TransferConfig` / `os.Stdout` 为进程级全局状态；同一进程内请串行调用 `UploadAuto` / `UploadWithOptions`（内部已用 `sessionMu` 串行化）。auto probe 亦为串行，避免全局状态竞态。
+
 依赖方式示例：
 
 ```bash
