@@ -1,7 +1,9 @@
 package route
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -100,9 +102,15 @@ func UploadWithOptions(files []string, opts Options) (link, backendName string, 
 		setupUploadFor(info)
 		// Prefer apis.Upload for dir zip / recursive / encrypt (UploadFile skips those).
 		// Plain single files keep UploadFile so Mute library callers get a returned link.
+		// Single-path Mute + full Upload: capture stdout so Encrypt/dir also return a link
+		// (Fdoc and other embedders rely on the return value, not printed stdout).
 		if needsFullUpload(files) {
-			lastErr = apis.Upload(files, info.Backend)
-			link = "" // links printed by Upload when MuteMode
+			if apis.MuteMode && len(files) == 1 && !apis.TransferConfig().RecursiveDirs {
+				link, lastErr = uploadMutedCapture(files, info.Backend)
+			} else {
+				lastErr = apis.Upload(files, info.Backend)
+				link = "" // multi / verbose: links printed by Upload when MuteMode
+			}
 		} else {
 			link, lastErr = uploadFileQuiet(files[0], info.Backend, apis.MuteMode)
 		}
@@ -138,6 +146,39 @@ func uploadFileQuiet(path string, backend apis.BaseBackend, mute bool) (string, 
 		_ = devNull.Close()
 	}()
 	return apis.UploadFile(path, backend)
+}
+
+// uploadMutedCapture runs apis.Upload with MuteMode, capturing links written to stdout.
+func uploadMutedCapture(files []string, backend apis.BaseBackend) (string, error) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		return "", apis.Upload(files, backend)
+	}
+	old := os.Stdout
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		_ = r.Close()
+		done <- strings.TrimSpace(buf.String())
+	}()
+	upErr := apis.Upload(files, backend)
+	_ = w.Close()
+	os.Stdout = old
+	out := <-done
+	return lastHTTPURL(out), upErr
+}
+
+func lastHTTPURL(s string) string {
+	var last string
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
+			last = line
+		}
+	}
+	return last
 }
 
 func backendAllowed(info *BackendInfo, force bool) error {
