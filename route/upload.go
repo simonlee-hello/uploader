@@ -8,6 +8,23 @@ import (
 	"uploader/apis"
 )
 
+// needsFullUpload is true when apis.Upload must run (zip dir, -r walk, encrypt key normalize).
+// Plain single-file uploads can use UploadFile so library callers get a returned link.
+func needsFullUpload(files []string) bool {
+	if len(files) != 1 {
+		return true
+	}
+	cfg := apis.TransferConfig()
+	if cfg.CryptoMode || cfg.RecursiveDirs {
+		return true
+	}
+	fi, err := os.Stat(files[0])
+	if err != nil || fi.IsDir() {
+		return true
+	}
+	return false
+}
+
 // Options controls UploadAuto / UploadWithOptions.
 type Options struct {
 	// Backend pins a single backend. Empty means auto probe + failover.
@@ -81,11 +98,13 @@ func UploadWithOptions(files []string, opts Options) (link, backendName string, 
 			fmt.Fprintf(os.Stderr, "retry backend %s...\n", info.Name)
 		}
 		setupUploadFor(info)
-		if len(files) == 1 {
-			link, lastErr = uploadFileQuiet(files[0], info.Backend, apis.MuteMode)
-		} else {
+		// Prefer apis.Upload for dir zip / recursive / encrypt (UploadFile skips those).
+		// Plain single files keep UploadFile so Mute library callers get a returned link.
+		if needsFullUpload(files) {
 			lastErr = apis.Upload(files, info.Backend)
-			link = "" // multi-file: links printed by Upload when MuteMode
+			link = "" // links printed by Upload when MuteMode
+		} else {
+			link, lastErr = uploadFileQuiet(files[0], info.Backend, apis.MuteMode)
 		}
 		if lastErr == nil {
 			if opts.OnSuccess != nil {
