@@ -9,3 +9,4 @@ transfer
 .reg-rust-report.txt
 *.encrypt
 .reg-*-report.txt
+/rust/
