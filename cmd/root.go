@@ -15,6 +15,7 @@ import (
 	"uploader/apis/public/gofile"
 	"uploader/apis/public/wenshushu"
 	"uploader/crypto"
+	"uploader/route"
 )
 
 var (
@@ -46,6 +47,8 @@ var (
 )
 
 func Execute() {
+	route.SetupBackend = applyBackendOptions
+
 	defer func() {
 		if flagKeep {
 			fmt.Fprint(os.Stderr, "press enter to exit...")

@@ -64,9 +64,22 @@ func (b *wssTransfer) PreUpload(_ string, size int64) error {
 }
 
 func (b wssTransfer) DoUpload(name string, size int64, file io.Reader) error {
+	// Library callers (and probe) may leave Config zeroed; match CLI defaults.
+	if b.Config.BlockSize <= 0 {
+		b.Config.BlockSize = 1048576
+	}
+	if b.Config.Parallel <= 0 {
+		b.Config.Parallel = 2
+	}
+	if b.Config.Interval <= 0 {
+		b.Config.Interval = 10
+	}
 
 	if size/int64(b.Config.BlockSize) > 10000 {
 		b.Config.BlockSize = int(size / 10000)
+		if b.Config.BlockSize <= 0 {
+			b.Config.BlockSize = 1
+		}
 		fmt.Printf("blocksize too small, set to %d\n", b.Config.BlockSize)
 	}
 

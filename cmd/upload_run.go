@@ -3,106 +3,34 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"uploader/apis"
+	"uploader/route"
 )
 
-func backendAllowed(info *BackendInfo, force bool) error {
-	if info == nil {
-		return fmt.Errorf("unknown backend")
-	}
-	switch info.Status {
-	case "down":
-		if !force {
-			return fmt.Errorf("backend %s is down (%s); use -force to try anyway", info.Name, info.Note)
-		}
-	case "flaky":
-		if !force {
-			return fmt.Errorf("backend %s is flaky (%s); use -force to try anyway", info.Name, info.Note)
-		}
-	}
-	return nil
-}
-
-func setupUploadFor(info *BackendInfo) {
-	applyBackendOptions(info.Name)
-	cfg := apis.TransferConfig()
-	cfg.MaxBytes = info.MaxBytes()
-	cfg.BackendName = info.Name
-	apis.SizeHint = func(size int64) string {
-		alts := backendsFitting(size)
-		var filtered []string
-		for _, a := range alts {
-			if a != info.Name && backendStatus(a) == "ok" {
-				filtered = append(filtered, a)
-			}
-		}
-		if len(filtered) == 0 {
-			return ""
-		}
-		if len(filtered) > 6 {
-			filtered = filtered[:6]
-		}
-		return "try: -b " + strings.Join(filtered, " | -b ")
-	}
-}
-
-func backendStatus(name string) string {
-	if info := findBackend(name); info != nil {
-		return info.Status
-	}
-	return ""
-}
-
 func uploadWithOptions(files []string, primary string, auto bool, force bool) error {
-	maxSize, err := estimateUploadMaxSize(files)
+	backend := ""
+	if !auto {
+		backend = primary
+	}
+	cfg := apis.TransferConfig()
+	link, _, err := route.UploadWithOptions(files, route.Options{
+		Backend: backend,
+		Force:   force,
+		Quiet:   apis.QuietMode,
+		Mute:    apis.MuteMode,
+		Encrypt: cfg.CryptoMode,
+		Key:     cfg.CryptoKey,
+		OnSuccess: func(name string) {
+			saveLastBackend(name)
+		},
+	})
 	if err != nil {
 		return err
 	}
-
-	var candidates []*BackendInfo
-	if auto {
-		candidates, err = probeRankedForUpload(maxSize, force)
-		if err != nil {
-			return err
-		}
-	} else {
-		info := findBackend(primary)
-		if info == nil {
-			return fmt.Errorf("unknown backend %q", primary)
-		}
-		if err := backendAllowed(info, force); err != nil {
-			return err
-		}
-		lim := info.MaxBytes()
-		if maxSize > 0 && lim > 0 && maxSize > lim {
-			return fmt.Errorf("%s exceeds backend %s limit", primary, info.Name)
-		}
-		candidates = []*BackendInfo{info}
+	// Single-file quiet path swallows PostUpload prints; emit the returned link.
+	if link != "" && apis.MuteMode {
+		fmt.Fprintln(os.Stdout, link)
 	}
-
-	if len(candidates) == 0 {
-		return fmt.Errorf("no backend available for this file size")
-	}
-
-	var lastErr error
-	for i, info := range candidates {
-		if !apis.QuietMode && auto && i > 0 {
-			fmt.Fprintf(os.Stderr, "retry backend %s...\n", info.Name)
-		}
-		setupUploadFor(info)
-		lastErr = apis.Upload(files, info.Backend)
-		if lastErr == nil {
-			saveLastBackend(info.Name)
-			return nil
-		}
-		if !auto {
-			return lastErr
-		}
-		if !apis.QuietMode {
-			fmt.Fprintf(os.Stderr, "backend %s failed: %v\n", info.Name, lastErr)
-		}
-	}
-	return lastErr
+	return nil
 }
