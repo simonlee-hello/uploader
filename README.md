@@ -108,6 +108,52 @@ uploader decrypt -k secret -o out.bin ./file.encrypt
 | 1 | 上传 / 配置错误 |
 | 2 | 参数错误 |
 
+## Library API（`uploader/route`）
+
+除 CLI 外，可把本模块当库嵌入（例如 [Fdoc](https://github.com/simonlee-hello/Fdoc) 的 `-upload`）。
+
+核心入口在 `uploader/route`：
+
+| API | 说明 |
+|-----|------|
+| `UploadAuto(path, opts)` | 单文件上传；`opts.Backend` 为空则按体积 probe + failover |
+| `UploadWithOptions(files, opts)` | 多路径；同上 |
+| `FindBackend` / `Backends` / `ProbeRankedForUpload` | 渠道表与探测 |
+
+```go
+import "uploader/route"
+
+link, backend, err := route.UploadAuto("/tmp/a.tar.gz", route.Options{
+    // Backend: "",   // 空 = auto
+    // Backend: "temp", // 钉死渠道（不 failover）
+    Force: false,
+    Quiet: true,
+    Mute:  true, // 吞掉 PostUpload 的 stdout，只通过返回值拿链接
+})
+if err != nil {
+    return err
+}
+_ = link    // https://...
+_ = backend // 实际成功的短名，如 "temp"
+```
+
+`Options` 要点：
+
+- `Backend` 为空 → auto（与 CLI 不传 `-b` 一致）
+- `Mute`/`Quiet` → 适合库调用，避免污染调用方 stdout
+- `Encrypt` + `Key` → 流式加密后再传
+- `OnSuccess` → 成功回调（CLI 用来写 `last-backend`）
+
+CLI 的 `cmd` 已改为调用同一套 `route` 逻辑，避免两套实现。文叔叔等后端在库路径下会补默认 `BlockSize`/`Parallel`，避免 Config 为零时 panic。
+
+依赖方式示例：
+
+```bash
+# go.mod
+require uploader v0.0.0
+replace uploader => ../uploader   # 或 git / vendor 路径
+```
+
 ## Disclaimer
 
 仅用于授权渗透测试、攻防演练与防御研究。请勿用于未授权系统。使用者自行承担合规与法律风险。
